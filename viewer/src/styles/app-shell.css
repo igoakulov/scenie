@@ -22,7 +22,7 @@ body,
   -webkit-user-select: none;
 }
 
-.app-shell input,
+.app-shell input:not([type="range"]),
 .app-shell textarea,
 .app-shell [contenteditable="true"],
 .app-shell .summary-md,
@@ -50,6 +50,20 @@ body,
   display: block;
   width: 100% !important;
   height: 100% !important;
+}
+
+.viewport-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+  pointer-events: auto;
 }
 
 .viewport-error {

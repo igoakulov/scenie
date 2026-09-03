@@ -166,24 +166,7 @@ const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
 camera.position.set(0.38, -0.34, 3.3);
 camera.lookAt(0.38, -0.34, 0);
 
-let L;
-let m;
-let g;
-let theta0;
-let mode;
-let overlays;
-let hDrop;
-let vBottom;
-let ETot;
-let mg;
-let bobR;
-let arcR;
-let energyX;
-let barH;
-let energyBase;
-let energyOn;
-let theta;
-let omega;
+let L, m, g, theta0, mode, overlays, hDrop, vBottom, ETot, mg, bobR, arcR, energyX, barH, energyBase, energyOn, theta, omega;
 
 function accel(th) {
   return -(g / L) * Math.sin(th);

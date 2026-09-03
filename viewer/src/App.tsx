@@ -14,6 +14,7 @@ import {
 } from "./host/SceneHost";
 import { gridForDimensions } from "./host/grid";
 import { userFacingError } from "./host/viewerError";
+import { isTypingTarget } from "./host/typingFocus";
 import { CopyIconButton } from "./chrome/CopyHitbox";
 import { cn } from "@/lib/utils";
 
@@ -100,14 +101,8 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (
-        t &&
-        (t.tagName === "INPUT" ||
-          t.tagName === "TEXTAREA" ||
-          t.tagName === "SELECT" ||
-          t.isContentEditable)
-      ) {
+      if (isTypingTarget(e.target)) {
+        e.stopImmediatePropagation();
         return;
       }
       if (e.key === "/") {
@@ -320,6 +315,11 @@ export function App() {
 
       <div className="viewport">
         <div className="viewport-canvas-host" ref={canvasHostRef} />
+        {loading && (
+          <div className="viewport-loading" aria-busy="true" aria-live="polite">
+            Loading…
+          </div>
+        )}
         {error && (
           <div className="viewport-error" role="alert">
             <p className="m-0 min-w-0 flex-1">{error}</p>

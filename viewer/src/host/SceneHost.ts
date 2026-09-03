@@ -31,6 +31,7 @@ import {
   rootHasAgentLight,
 } from "./sceneOwnership";
 import { SceneSideEffects } from "./sceneSideEffects";
+import { isTypingTarget } from "./typingFocus";
 
 const BG = 0x09090b;
 const IDLE_ORBIT_SPEED = 1.0;
@@ -635,7 +636,12 @@ export class SceneHost {
       }
     }
 
-    if (this.hasUpdateView() && this.loaded && !this.updateViewFaulted) {
+    if (
+      this.hasUpdateView() &&
+      this.loaded &&
+      !this.updateViewFaulted &&
+      !isTypingTarget(document.activeElement)
+    ) {
       try {
         this.loaded.module.updateView!(dt, this.camera);
       } catch (err) {

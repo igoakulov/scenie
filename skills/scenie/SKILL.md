@@ -157,7 +157,7 @@ DISPLAY types (no `key`, not in params bag):
 
 EDITABLE types (each has key, label, default → params bag):
 
-- number — min, max required; optional step, unit
+- number — min, max required; optional step, unit. Host slider+input when step set; else number input
 - boolean
 - select — options[]; default ∈ options
 - multiselect — options[]; default[] each ∈ options

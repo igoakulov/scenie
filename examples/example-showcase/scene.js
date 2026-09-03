@@ -12,9 +12,7 @@ const KUIPER_N = 260;
 const WIND_N = 280;
 const planetScale = 0.5;
 const sunGlow = 1.1;
-let elliptical = true;
-let timeScale = 0.2;
-let windCount = WIND_N;
+let elliptical = true, timeScale = 0.2, windCount = WIND_N;
 
 const layerObjs = {
   orbits: [],
@@ -28,9 +26,7 @@ const layerObjs = {
 const planetBodies = [];
 const glowSprites = [];
 const orbitRecords = [];
-let cometCore = null;
-let starsDim = null;
-let starsBright = null;
+let cometCore = null, starsDim = null, starsBright = null;
 
 const geoCache = new Map();
 function unitSphere(seg) {
@@ -73,8 +69,7 @@ function n3(x, y, z) {
   return y0 + (y1 - y0) * uz;
 }
 function fbm(x, y, z, oct = 5) {
-  let v = 0;
-  let a = 0.5;
+  let v = 0, a = 0.5;
   for (let i = 0; i < oct; i++) {
     v += a * n3(x, y, z);
     x *= 2.03;
@@ -155,10 +150,7 @@ function bandShade(seed, bands, spot) {
   return (x, y, z, u, v) => {
     const warp = (fbm(x * 2.2 + seed, y * 6, z * 2.2, 4) - 0.5) * 0.18;
     const yy = clamp01(v + warp);
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    let wsum = 0;
+    let r = 0, g = 0, b = 0, wsum = 0;
     for (let i = 0; i < bands.length; i++) {
       const bd = bands[i];
       const k = Math.exp(-Math.pow((yy - bd.y) / bd.w, 2));
@@ -309,10 +301,7 @@ function ringTex(kind) {
     (d, W) => {
       for (let y = 0; y < H; y++) {
         const u = y / (H - 1);
-        let a = 0;
-        let r = 220;
-        let g = 205;
-        let b = 170;
+        let a = 0, r = 220, g = 205, b = 170;
         if (kind === "saturn") {
           if (u < 0.18) a = 0.12 * (u / 0.18);
           else if (u < 0.52) a = 0.82;
@@ -909,9 +898,7 @@ const kuiperBelt = makeBelt(KUIPER_N, 26.6, 31.2, 1.1, 0.018, 0.055, { h: 0.55, 
 layerObjs.asteroids.push(asteroidBelt.mesh);
 layerObjs.kuiper.push(kuiperBelt.mesh);
 
-let comet = null;
-let cometTail = null;
-let cometTail2 = null;
+let comet = null, cometTail = null, cometTail2 = null;
 {
   const root = new THREE.Group();
   root.rotation.z = 0.32;
@@ -974,9 +961,7 @@ function milkyTex() {
         const dust = fbm(u * 8, v * 4, 2.2, 4);
         const star = h3(x * 0.37, y * 0.61, 3.1);
         const neb = fbm(u * 4 + 2, v * 3, 5, 3);
-        let r = 4 + band * dust * 38 + neb * band * 18;
-        let g = 5 + band * dust * 32 + neb * band * 10;
-        let b = 10 + band * dust * 28;
+        let r = 4 + band * dust * 38 + neb * band * 18, g = 5 + band * dust * 32 + neb * band * 10, b = 10 + band * dust * 28;
         if (star > 0.985) {
           const t = (star - 0.985) / 0.015;
           r += 180 * t;

@@ -107,8 +107,7 @@ const look = { yaw: 0, pitch: 0 };
 const vel = new THREE.Vector3();
 const wish = new THREE.Vector3();
 const euler = new THREE.Euler(0, 0, 0, "YXZ");
-let speed = 6.5;
-let canvasRef = null;
+let speed = 6.5, canvasRef = null;
 
 function isDown(code) {
   return !!keys[code];
@@ -197,9 +196,7 @@ export function updateView(dt, camera) {
   const mul = (boost ? 3.4 : 1) * (slow ? 0.22 : 1);
   const sp = speed * mul;
 
-  let x = 0;
-  let y = 0;
-  let z = 0;
+  let x = 0, y = 0, z = 0;
   if (isDown("KeyW")) z -= 1;
   if (isDown("KeyS")) z += 1;
   if (isDown("KeyA")) x -= 1;

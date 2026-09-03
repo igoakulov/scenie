@@ -25,7 +25,14 @@ export function poseFromCamera(agent: THREE.Camera): StartView {
   agent.getWorldQuaternion(quat);
   const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(quat).normalize();
   const target = position.clone().addScaledVector(dir, 8);
-  const view: StartView = { position, target, near: agent.near, far: agent.far };
+  const view: StartView = { position, target };
+  if (
+    agent instanceof THREE.PerspectiveCamera ||
+    agent instanceof THREE.OrthographicCamera
+  ) {
+    view.near = agent.near;
+    view.far = agent.far;
+  }
   if (agent instanceof THREE.PerspectiveCamera) view.fov = agent.fov;
   return view;
 }

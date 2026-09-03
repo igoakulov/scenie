@@ -83,6 +83,7 @@ export function renderLeaf(
           defaultValue={node.default}
           min={node.min}
           max={node.max}
+          step={node.step}
           unit={node.unit}
           onCommit={(n) => onChange(node.key, n)}
         />
