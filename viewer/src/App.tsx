@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PanelRightIcon, PanelRightCloseIcon } from "lucide-react";
+import { PanelRightIcon, PanelRightCloseIcon, XIcon } from "lucide-react";
 import { SummaryPanel } from "./chrome/SummaryPanel";
 import { ExploreTools } from "./chrome/ExploreTools";
 import { LibraryPanel } from "./chrome/LibraryPanel";
@@ -57,6 +57,7 @@ export function App() {
   const hostRef = useRef<SceneHost | null>(null);
 
   const [sheetOpen, setSheetOpen] = useState(true);
+  const [summaryPresent, setSummaryPresent] = useState(false);
   const [sceneId, setSceneId] = useState<string | null>(() => readSceneFromUrl());
   const [sheetTab, setSheetTab] = useState<SheetTab>(() =>
     readSceneFromUrl() ? "summary" : "library",
@@ -74,6 +75,8 @@ export function App() {
   const hasScene = sceneId != null;
   const sceneIdRef = useRef(sceneId);
   sceneIdRef.current = sceneId;
+  const summaryPresentRef = useRef(summaryPresent);
+  summaryPresentRef.current = summaryPresent;
 
   useEffect(() => {
     const host = canvasHostRef.current;
@@ -101,6 +104,11 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (summaryPresentRef.current && (e.key === "Escape" || e.key === "/")) {
+        e.preventDefault();
+        setSummaryPresent(false);
+        return;
+      }
       if (isTypingTarget(e.target)) {
         e.stopImmediatePropagation();
         return;
@@ -189,6 +197,10 @@ export function App() {
       setSheetTab("library");
     }
   }, [hasScene, sheetTab]);
+
+  useEffect(() => {
+    setSummaryPresent(false);
+  }, [sheetTab, sceneId]);
 
   const onGridChange = useCallback(
     (partial: Partial<GridState>) => {
@@ -296,11 +308,15 @@ export function App() {
       type="button"
       variant="outline"
       size="icon"
-      title="Toggle panel [/]"
-      aria-label="Toggle panel [/]"
-      onClick={toggleSheet}
+      title={summaryPresent ? "Close summary" : "Toggle panel [/]"}
+      aria-label={summaryPresent ? "Close summary" : "Toggle panel [/]"}
+      onClick={
+        summaryPresent ? () => setSummaryPresent(false) : toggleSheet
+      }
     >
-      {sheetOpen ? (
+      {summaryPresent ? (
+        <XIcon className="size-5" data-icon="inline-start" />
+      ) : sheetOpen ? (
         <PanelRightCloseIcon className="size-5" data-icon="inline-start" />
       ) : (
         <PanelRightIcon className="size-5" data-icon="inline-start" />
@@ -312,6 +328,23 @@ export function App() {
     <div className="app-shell">
       {/* Single stable control — never remounts between open/closed (avoids flash). */}
       <div className="panel-toggle-float">{panelBtn}</div>
+
+      {summaryPresent && loaded && loaded.id === sceneId && (
+        <div
+          className="summary-present"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Summary"
+          onClick={() => setSummaryPresent(false)}
+        >
+          <div
+            className="summary-present-scroll sheet-scroll"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <SummaryPanel id={loaded.id} metadata={loaded.metadata} />
+          </div>
+        </div>
+      )}
 
       <div className="viewport">
         <div className="viewport-canvas-host" ref={canvasHostRef} />
@@ -391,7 +424,11 @@ export function App() {
                   hasScene &&
                   loaded &&
                   loaded.id === sceneId && (
-                    <SummaryPanel id={loaded.id} metadata={loaded.metadata} />
+                    <SummaryPanel
+                      id={loaded.id}
+                      metadata={loaded.metadata}
+                      onPresent={() => setSummaryPresent(true)}
+                    />
                   )}
                 {sheetTab === "summary" &&
                   hasScene &&

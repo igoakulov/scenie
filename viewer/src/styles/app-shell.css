@@ -27,7 +27,8 @@ body,
 .app-shell [contenteditable="true"],
 .app-shell .summary-md,
 .app-shell .viewport-error,
-.app-shell .sheet-selectable {
+.app-shell .sheet-selectable,
+.app-shell .summary-present {
   user-select: text;
   -webkit-user-select: text;
 }
@@ -91,7 +92,7 @@ body,
   position: absolute;
   top: 6px;
   right: 8px;
-  z-index: 20;
+  z-index: 40;
 }
 
 /* Right sheet: always a real flex sibling (not modal overlay). */

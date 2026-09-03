@@ -27,7 +27,7 @@ Three example scenes from real prompts. Come included in the package your AI age
 ## Features
 
 - Learn by seeing and doing — turn ideas from a chat with your agent into 3D or 2D scenes you can open in the browser
-- Built for class and self-study — clear summaries (including math), labels in the scene, and controls that match what you’re studying
+- Built for class and self-study — fullscreen presentation, clear summaries (including math), live scene annotation and controls personalized for your specific topic and taste
 - Hands-on, alive — drag the view, play animation, and change numbers and options to watch objects respond
 - Personal local library — scenes live as files on your device so you can reopen them later; Scenie collects zero data
 - Example scenes included — try them out, ask agent to tweak them
@@ -49,7 +49,7 @@ Three example scenes from real prompts. Come included in the package your AI age
 
 1. **Describe** — explore the subject with your AI agent, then ask it to build or show a scene with the [Scenie skill](https://github.com/igoakulov/scenie/blob/main/skills/scenie/SKILL.md) (a short guide your AI agent saves and follows to improve his skills in building scenes). Your questions and discussion can be written into the scene summary — not only the 3D/2D view.
 2. **Open** — the agent opens the scene in your **browser**: a library of your scenes, fullscreen scene view + topic summary side by side that you can read and **come back to later**.
-3. **Play** — drag the view, use **Play/Pause**, and use the **side-panel scene controls** (Explore cards with numbers, toggles, options) to watch the scene update.
+3. **Play** — drag the view, use **Play/Pause**, and use the **side-panel scene controls** (Explore cards with numbers, sliders, toggles, options) to watch the scene update.
 
 ## Install
 

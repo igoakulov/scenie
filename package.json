@@ -1,6 +1,6 @@
 {
   "name": "scenie",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI and browser viewer for agent-built interactive Three.js educational scenes.",
   "type": "module",
   "bin": {
@@ -45,6 +45,7 @@
   },
   "homepage": "https://github.com/igoakulov/scenie#readme",
   "dependencies": {
+    "scenie": "^0.1.1",
     "three": "^0.172.0"
   },
   "devDependencies": {

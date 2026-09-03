@@ -1,3 +1,4 @@
+import { Maximize2Icon } from "lucide-react";
 import type { SceneMetadata } from "../host/loadScene";
 import { DescriptionText } from "../math/DescriptionText";
 import { CopyIconButton } from "./CopyHitbox";
@@ -12,9 +13,11 @@ import {
 export function SummaryPanel({
   id,
   metadata,
+  onPresent,
 }: {
   id: string;
   metadata: SceneMetadata;
+  onPresent?: () => void;
 }) {
   const copyText = `${id}: "${metadata.title}"`;
 
@@ -32,32 +35,45 @@ export function SummaryPanel({
   const hasMeta = tags.length > 0 || attributionRows.length > 0;
 
   return (
-    <div className="flex min-w-0 flex-col gap-2.5 text-xs/relaxed">
-      <div className="flex min-w-0 items-center gap-1 px-0.5">
+    <div className="summary-panel grid min-w-0 grid-cols-[minmax(0,1fr)_1.25rem] gap-x-1 gap-y-2.5 text-xs/relaxed">
+      <div className="flex min-w-0 items-center gap-1">
         <h1
           className="m-0 min-w-0 flex-1 truncate text-sm font-medium tracking-tight"
           title={metadata.title}
         >
           {metadata.title}
         </h1>
-        <CopyIconButton text={copyText} />
+        {onPresent && <CopyIconButton text={copyText} />}
       </div>
+      {onPresent ? (
+        <button
+          type="button"
+          title="Fullscreen"
+          aria-label="Fullscreen"
+          onClick={onPresent}
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-2.5"
+        >
+          <Maximize2Icon />
+        </button>
+      ) : (
+        <CopyIconButton text={copyText} />
+      )}
 
       {metadata.description.trim().length > 0 && (
-        <div className="flex min-w-0 items-start gap-1">
+        <>
           <DescriptionText
             text={metadata.description}
-            className="min-w-0 flex-1 text-muted-foreground [&_.katex]:text-foreground"
+            className="min-w-0 text-muted-foreground [&_.katex]:text-foreground"
           />
           <CopyIconButton
             text={metadata.description}
             className="mt-0.5"
           />
-        </div>
+        </>
       )}
 
       {hasMeta && (
-        <Accordion className="w-full">
+        <Accordion className="col-span-2 w-full">
           {tags.length > 0 && (
             <AccordionItem value="tags">
               <AccordionTrigger>Tags</AccordionTrigger>

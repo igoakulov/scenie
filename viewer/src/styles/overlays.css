@@ -1,3 +1,68 @@
+/* Fullscreen Summary read view — blur the scene, reuse SummaryPanel. */
+.summary-present {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: center;
+  background: color-mix(in oklch, var(--background) 72%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.summary-present-scroll {
+  width: 100%;
+  max-width: 46rem;
+  height: 100%;
+  min-height: 0;
+  padding: 3.5rem 1.5rem 2.5rem;
+}
+.summary-present .summary-panel {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 1.25rem;
+}
+.summary-present .summary-md {
+  font-size: 1rem;
+  line-height: 1.65;
+  color: var(--foreground);
+}
+.summary-present .summary-md p,
+.summary-present .summary-md ul,
+.summary-present .summary-md ol,
+.summary-present .summary-md blockquote,
+.summary-present .summary-md pre,
+.summary-present .summary-md table {
+  margin-block: 1.1em;
+}
+.summary-present .summary-md > :first-child {
+  margin-top: 0;
+}
+.summary-present .summary-md > :last-child {
+  margin-bottom: 0;
+}
+.summary-present .summary-md h1,
+.summary-present .summary-md h2,
+.summary-present .summary-md h3 {
+  margin-top: 1.75em;
+  margin-bottom: 0.5em;
+}
+.summary-present .summary-md :is(h1, h2, h3) + p,
+.summary-present .summary-md :is(h1, h2, h3) + ul,
+.summary-present .summary-md :is(h1, h2, h3) + ol {
+  margin-top: 0;
+}
+.summary-present h1 {
+  font-size: 1.5rem;
+  line-height: 1.25;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}
+.summary-present [data-slot="accordion"],
+.summary-present button[title="Copy"],
+.summary-present button[title="Copied"] {
+  display: none;
+}
+
 /* Summary description: wrap in narrow sheet — no horizontal scroll */
 
 .summary-md {
