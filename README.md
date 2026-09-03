@@ -6,17 +6,19 @@ Talk to your AI — it builds interactive 2D/3D scenes for class / homework / de
 
 Three example scenes from real prompts. Come included in the package your AI agent installs (see Install section).
 
-1. Theory: linear algebra - [see prompt](https://github.com/igoakulov/scenie/blob/main/examples/example-theory/metadata.json)
+1. Example showcase: solar system - [see prompt](https://github.com/igoakulov/scenie/blob/main/examples/example-showcase/metadata.json)
 
-![Example theory: linear algebra](https://raw.githubusercontent.com/igoakulov/scenie/main/examples/screenshots/example-theory.png)
+![Example showcase: solar system](https://raw.githubusercontent.com/igoakulov/scenie/main/examples/screenshots/example-showcase.png)
 
-2. Homework: pendulum physics - [see prompt](https://github.com/igoakulov/scenie/blob/main/examples/example-homework/metadata.json)
+2. Example homework: pendulum physics - [see prompt](https://github.com/igoakulov/scenie/blob/main/examples/example-homework/metadata.json)
 
 ![Example homework: pendulum physics](https://raw.githubusercontent.com/igoakulov/scenie/main/examples/screenshots/example-homework.png)
 
-3. Showcase: solar system - [see prompt](https://github.com/igoakulov/scenie/blob/main/examples/example-showcase/metadata.json)
+3. Example theory: linear algebra - [see prompt](https://github.com/igoakulov/scenie/blob/main/examples/example-theory/metadata.json)
 
-![Example showcase: solar system](https://raw.githubusercontent.com/igoakulov/scenie/main/examples/screenshots/example-showcase.png)
+![Example theory: linear algebra](https://raw.githubusercontent.com/igoakulov/scenie/main/examples/screenshots/example-theory.png)
+![Example theory: linear algebra](https://raw.githubusercontent.com/igoakulov/scenie/main/examples/screenshots/example-theory-overview.png)
+
 
 ## Who Scenie is for
 
