@@ -35,7 +35,12 @@ export async function cmdValidate(id: string | undefined): Promise<number> {
   for (const sceneId of ids) {
     const result = await validateScene(workspace, sceneId);
     if (result.ok) {
-      printSceneBlock(workspace, sceneId, ["ok"]);
+      const extra = formatIssueLines(result.issues);
+      printSceneBlock(
+        workspace,
+        sceneId,
+        extra.length ? ["ok", ...extra] : ["ok"],
+      );
     } else {
       failed += 1;
       printSceneBlock(workspace, sceneId, formatIssueLines(result.issues));

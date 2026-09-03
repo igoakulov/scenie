@@ -1,266 +1,127 @@
 import * as THREE from "three";
+import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
-export const runtime = { lights: true, helpers: true, camera: true, playback: true };
+const scene = new THREE.Scene();
 
-const COLORS = {
-  basisX: 0xef4444,
-  basisY: 0x22c55e,
-  basisZ: 0x3b82f6,
-  u: 0xf97316,
-  v: 0xa855f7,
-  sum: 0x0ea5e9,
-  scaled: 0xeab308,
-  ghost: 0x94a3b8,
+const COL = {
+  i: 0xc0392b,
+  j: 0x1e8449,
+  k: 0x2471a3,
+  u: 0xd35400,
+  v: 0x6c3483,
+  sum: 0x0e6655,
+  scaled: 0xb7950b,
+  dash: 0x7f8c8d,
+  origin: 0x2c3e50,
 };
 
-function addArrow(root, origin, dir, length, color, headLength, headWidth) {
-  if (length < 1e-6) return null;
-  const d = dir.clone();
-  if (d.lengthSq() < 1e-12) return null;
-  d.normalize();
-  const arrow = new THREE.ArrowHelper(
-    d,
-    origin,
-    length,
-    color,
-    headLength ?? Math.min(0.28, length * 0.22),
-    headWidth ?? Math.min(0.16, length * 0.12)
-  );
-  root.add(arrow);
+const u = new THREE.Vector3(params.u_x ?? 0, params.u_y ?? 0, params.u_z ?? 0);
+const v = new THREE.Vector3(params.v_x ?? 0, params.v_y ?? 0, params.v_z ?? 0);
+const w = u.clone().add(v);
+const c = params.c ?? 1;
+const cu = u.clone().multiplyScalar(c);
+const layers = new Set(params.layers ?? []);
+const showLabels = params.show_labels !== false;
+
+const origin = new THREE.Vector3();
+
+scene.add(
+  new THREE.Mesh(
+    new THREE.SphereGeometry(0.045, 16, 12),
+    new THREE.MeshBasicMaterial({ color: COL.origin }),
+  ),
+);
+
+function addArrow(dir, color) {
+  const len = dir.length();
+  if (len < 1e-4) return null;
+  const headLen = Math.min(0.22, Math.max(0.08, len * 0.18));
+  const arrow = new THREE.ArrowHelper(dir.clone().normalize(), origin, len, color, headLen, headLen * 0.55);
+  scene.add(arrow);
   return arrow;
 }
 
-function addAnnotation(root, position, text) {
-  const a = new THREE.Object3D();
-  a.position.copy(position);
-  a.userData.annotation = text;
-  root.add(a);
-  return a;
+function addLabel(pos, text) {
+  if (!showLabels || !text) return;
+  const el = document.createElement("div");
+  el.textContent = text;
+  const obj = new CSS2DObject(el);
+  const n = pos.lengthSq() < 1e-8 ? new THREE.Vector3(0.12, 0.12, 0) : pos.clone().normalize().multiplyScalar(0.16);
+  obj.position.copy(pos).add(n);
+  scene.add(obj);
 }
 
-function addDashedSegment(root, a, b, color) {
+function addDashed(a, b) {
   const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
-  const mat = new THREE.LineDashedMaterial({
-    color,
-    dashSize: 0.12,
-    gapSize: 0.08,
-    transparent: true,
-    opacity: 0.85,
-  });
-  const line = new THREE.Line(geo, mat);
+  const line = new THREE.Line(
+    geo,
+    new THREE.LineDashedMaterial({
+      color: COL.dash,
+      dashSize: 0.12,
+      gapSize: 0.08,
+      transparent: true,
+      opacity: 0.75,
+    }),
+  );
   line.computeLineDistances();
-  root.add(line);
-  return line;
+  scene.add(line);
 }
 
-export function setup(host) {
-  const p = host.params;
-  const show = Array.isArray(p.show) ? p.show : [];
-
-  const ux = p.u_x ?? 2;
-  const uy = p.u_y ?? 1;
-  const uz = p.u_z ?? 0.5;
-  const vx = p.v_x ?? 0.5;
-  const vy = p.v_y ?? 1.5;
-  const vz = p.v_z ?? 0.8;
-  const s = p.scalar ?? 1.5;
-
-  const O = new THREE.Vector3(0, 0, 0);
-  const U = new THREE.Vector3(ux, uy, uz);
-  const V = new THREE.Vector3(vx, vy, vz);
-  const S = U.clone().add(V);
-  const SU = U.clone().multiplyScalar(s);
-
-  // Starting camera pose (first mount only; host strips after setup)
-  const cam = new THREE.PerspectiveCamera();
-  cam.position.set(5.2, 3.6, 6.4);
-  cam.lookAt(0.4, 0.6, 0.3);
-  host.root.add(cam);
-
-  // --- Standard basis ---
-  if (show.includes("basis")) {
-    const bl = p.basis_len ?? 1;
-    addArrow(host.root, O, new THREE.Vector3(1, 0, 0), bl, COLORS.basisX, 0.22, 0.12);
-    addArrow(host.root, O, new THREE.Vector3(0, 1, 0), bl, COLORS.basisY, 0.22, 0.12);
-    addArrow(host.root, O, new THREE.Vector3(0, 0, 1), bl, COLORS.basisZ, 0.22, 0.12);
-    if (p.show_labels !== false) {
-      addAnnotation(host.root, new THREE.Vector3(bl + 0.15, 0, 0), "$\\mathbf{e}_1$");
-      addAnnotation(host.root, new THREE.Vector3(0, bl + 0.15, 0), "$\\mathbf{e}_2$");
-      addAnnotation(host.root, new THREE.Vector3(0, 0, bl + 0.15), "$\\mathbf{e}_3$");
-    }
-  }
-
-  // --- Vector u ---
-  if (show.includes("u")) {
-    const len = U.length();
-    addArrow(host.root, O, U, len, COLORS.u);
-    if (p.show_labels !== false && len > 1e-6) {
-      const tip = U.clone().multiplyScalar(1 + 0.12 / len);
-      addAnnotation(host.root, tip, "$\\mathbf{u}$");
-    }
-  }
-
-  // --- Vector v ---
-  if (show.includes("v")) {
-    const len = V.length();
-    addArrow(host.root, O, V, len, COLORS.v);
-    if (p.show_labels !== false && len > 1e-6) {
-      const tip = V.clone().multiplyScalar(1 + 0.12 / len);
-      addAnnotation(host.root, tip, "$\\mathbf{v}$");
-    }
-  }
-
-  // --- Parallelogram (ghost edges for tip-to-tail story) ---
-  if (show.includes("parallelogram")) {
-    // From tip of u draw v; from tip of v draw u
-    addDashedSegment(host.root, U, S, COLORS.ghost);
-    addDashedSegment(host.root, V, S, COLORS.ghost);
-    // Optional thin solid copies of u,v for the other two sides if not already shown
-    if (!show.includes("u") && U.length() > 1e-6) {
-      addDashedSegment(host.root, O, U, COLORS.u);
-    }
-    if (!show.includes("v") && V.length() > 1e-6) {
-      addDashedSegment(host.root, O, V, COLORS.v);
-    }
-  }
-
-  // --- Sum u + v ---
-  if (show.includes("sum")) {
-    const len = S.length();
-    addArrow(host.root, O, S, len, COLORS.sum);
-    if (p.show_labels !== false && len > 1e-6) {
-      const tip = S.clone().multiplyScalar(1 + 0.14 / len);
-      addAnnotation(host.root, tip, "$\\mathbf{u}+\\mathbf{v}$");
-    }
-  }
-
-  // --- Scalar stretch s u ---
-  if (show.includes("scaled")) {
-    const len = SU.length();
-    if (len > 1e-6) {
-      addArrow(host.root, O, SU, len, COLORS.scaled);
-      if (p.show_labels !== false) {
-        const tip = SU.clone().multiplyScalar(1 + 0.14 / len);
-        const label =
-          Math.abs(s - 1) < 1e-9
-            ? "$1\\,\\mathbf{u}$"
-            : `$s\\,\\mathbf{u}$`;
-        addAnnotation(host.root, tip, label);
-      }
-    } else if (p.show_labels !== false) {
-      addAnnotation(host.root, new THREE.Vector3(0.2, 0.2, 0), "$s\\,\\mathbf{u}=\\mathbf{0}$");
-    }
-    // Faint original u when stretching so students see the scale change
-    if (!show.includes("u") && U.length() > 1e-6) {
-      addDashedSegment(host.root, O, U, COLORS.u);
-    }
-  }
+if (layers.has("basis")) {
+  const i = new THREE.Vector3(1, 0, 0);
+  const j = new THREE.Vector3(0, 1, 0);
+  const k = new THREE.Vector3(0, 0, 1);
+  addArrow(i, COL.i);
+  addArrow(j, COL.j);
+  addArrow(k, COL.k);
+  addLabel(i, "$\\hat{\\imath}$");
+  addLabel(j, "$\\hat{\\jmath}$");
+  addLabel(k, "$\\hat{k}$");
 }
 
-export function params() {
-  return [
-    {
-      type: "card",
-      title: "Layers",
-      children: [
-        {
-          type: "note",
-          text: "Orange $\\mathbf{u}$, purple $\\mathbf{v}$, cyan sum, yellow $s\\mathbf{u}$. RGB = standard basis $\\mathbf{e}_1,\\mathbf{e}_2,\\mathbf{e}_3$. Toggle layers as you talk.",
-        },
-        {
-          key: "show",
-          type: "multiselect",
-          label: "Show",
-          options: ["basis", "u", "v", "parallelogram", "sum", "scaled"],
-          default: ["basis", "u", "v", "parallelogram", "sum"],
-        },
-        { key: "show_labels", type: "boolean", label: "Annotations", default: true },
-        {
-          key: "basis_len",
-          type: "number",
-          label: "Basis length",
-          min: 0.5,
-          max: 2,
-          step: 0.1,
-          default: 1,
-          unit: "u",
-        },
-        {
-          type: "label",
-          label: "$|\\mathbf{u}|$",
-          value: (q) => Math.hypot(q.u_x ?? 0, q.u_y ?? 0, q.u_z ?? 0).toFixed(2),
-        },
-        {
-          type: "label",
-          label: "$|\\mathbf{v}|$",
-          value: (q) => Math.hypot(q.v_x ?? 0, q.v_y ?? 0, q.v_z ?? 0).toFixed(2),
-        },
-        {
-          type: "label",
-          label: "$|\\mathbf{u}+\\mathbf{v}|$",
-          value: (q) =>
-            Math.hypot(
-              (q.u_x ?? 0) + (q.v_x ?? 0),
-              (q.u_y ?? 0) + (q.v_y ?? 0),
-              (q.u_z ?? 0) + (q.v_z ?? 0)
-            ).toFixed(2),
-        },
-        {
-          type: "label",
-          label: "$|s\\,\\mathbf{u}|$",
-          value: (q) =>
-            (Math.abs(q.scalar ?? 0) * Math.hypot(q.u_x ?? 0, q.u_y ?? 0, q.u_z ?? 0)).toFixed(2),
-        },
-      ],
-    },
-    {
-      type: "card",
-      title: "Vector $\\mathbf{u}$",
-      children: [
-        { key: "u_x", type: "number", label: "$u_x$", min: -3, max: 3, step: 0.1, default: 2, unit: "u" },
-        { key: "u_y", type: "number", label: "$u_y$", min: -3, max: 3, step: 0.1, default: 1, unit: "u" },
-        { key: "u_z", type: "number", label: "$u_z$", min: -3, max: 3, step: 0.1, default: 0.5, unit: "u" },
-      ],
-    },
-    {
-      type: "card",
-      title: "Vector $\\mathbf{v}$",
-      children: [
-        { key: "v_x", type: "number", label: "$v_x$", min: -3, max: 3, step: 0.1, default: 0.5, unit: "u" },
-        { key: "v_y", type: "number", label: "$v_y$", min: -3, max: 3, step: 0.1, default: 1.5, unit: "u" },
-        { key: "v_z", type: "number", label: "$v_z$", min: -3, max: 3, step: 0.1, default: 0.8, unit: "u" },
-      ],
-    },
-    {
-      type: "card",
-      title: "Scalar stretch",
-      children: [
-        {
-          type: "note",
-          text: "Enable **scaled** in Show. Try $s>1$, $0<s<1$, and $s<0$ (reverses).",
-        },
-        {
-          key: "scalar",
-          type: "number",
-          label: "$s$",
-          min: -2.5,
-          max: 2.5,
-          step: 0.1,
-          default: 1.5,
-        },
-      ],
-    },
-  ];
+if (layers.has("parallelogram") && u.length() > 1e-4 && v.length() > 1e-4) {
+  const positions = new Float32Array([0, 0, 0, u.x, u.y, u.z, w.x, w.y, w.z, v.x, v.y, v.z]);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geo.setIndex([0, 1, 2, 0, 2, 3]);
+  scene.add(
+    new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({
+        color: COL.sum,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    ),
+  );
+  addDashed(u, w);
+  addDashed(v, w);
 }
 
-export function validateParams(params) {
-  const issues = [];
-  const keys = ["u_x", "u_y", "u_z", "v_x", "v_y", "v_z", "scalar", "basis_len"];
-  for (const k of keys) {
-    const n = params[k];
-    if (n !== undefined && !Number.isFinite(Number(n))) {
-      issues.push({ key: k, message: "must be a finite number" });
-    }
-  }
-  return issues;
+if (layers.has("u")) {
+  addArrow(u, COL.u);
+  addLabel(u, "$\\mathbf{u}$");
 }
+
+if (layers.has("v")) {
+  addArrow(v, COL.v);
+  addLabel(v, "$\\mathbf{v}$");
+}
+
+if (layers.has("sum")) {
+  addArrow(w, COL.sum);
+  addLabel(w, "$\\mathbf{u}+\\mathbf{v}$");
+}
+
+if (layers.has("scaled")) {
+  addArrow(cu, COL.scaled);
+  addLabel(cu, "$c\\mathbf{u}$");
+}
+
+const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 80);
+camera.position.set(5.4, 3.5, 7.0);
+camera.lookAt(0.5, 0.7, 0.2);
+
+export { camera };

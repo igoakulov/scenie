@@ -63,7 +63,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    // Shared `src/runtime-flags.ts` lives one level above viewer root.
+    // Shared `src/host-flags.ts` lives one level above viewer root.
     fs: {
       allow: [resolve(__dirname, "..")],
     },

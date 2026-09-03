@@ -1,7 +1,9 @@
 /**
  * Multi-select dropdown (Grid planes + params multiselect).
  * One shared control — do not fork another checkbox dropdown.
+ * Flush to parent on close so the open menu is not re-rendered.
  */
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import {
@@ -15,6 +17,10 @@ import { cn } from "@/lib/utils";
 import { MathText } from "../math/renderMath";
 
 export type MultiSelectOption = { value: string; label: string };
+
+function sameSel(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+}
 
 export function MultiSelectField({
   label,
@@ -33,16 +39,23 @@ export function MultiSelectField({
   noneSummary?: string;
   className?: string;
 }) {
-  const selected = value;
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    if (!open) setDraft(value);
+  }, [open, value]);
+
+  const selected = open ? draft : value;
   const allOn =
-    options.length > 0 && options.every((o) => selected.includes(o.value));
+    options.length > 0 && options.every((o) => value.includes(o.value));
   const summary =
-    selected.length === 0
+    value.length === 0
       ? noneSummary
       : allOn && options.length > 1
         ? allSummary
         : options
-            .filter((o) => selected.includes(o.value))
+            .filter((o) => value.includes(o.value))
             .map((o) => o.label)
             .join(", ");
 
@@ -50,7 +63,7 @@ export function MultiSelectField({
     const set = new Set(selected);
     if (checked) set.add(optValue);
     else set.delete(optValue);
-    onChange(options.map((o) => o.value).filter((v) => set.has(v)));
+    setDraft(options.map((o) => o.value).filter((v) => set.has(v)));
   };
 
   return (
@@ -58,7 +71,14 @@ export function MultiSelectField({
       <FieldLabel className="text-xs text-muted-foreground">
         <MathText as="span" text={label} />
       </FieldLabel>
-      <DropdownMenu>
+      <DropdownMenu
+        modal={false}
+        open={open}
+        onOpenChange={(next) => {
+          if (open && !next && !sameSel(draft, value)) onChange(draft);
+          setOpen(next);
+        }}
+      >
         <DropdownMenuTrigger
           render={
             <Button

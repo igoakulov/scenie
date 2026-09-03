@@ -27,13 +27,14 @@ async function isScenePackageDir(dir: string): Promise<boolean> {
   try {
     await access(join(dir, "metadata.json"));
     await access(join(dir, "scene.js"));
+    await access(join(dir, "host.js"));
     return true;
   } catch {
     return false;
   }
 }
 
-/** Scene package ids under package examples/ (dirs with metadata.json + scene.js only). */
+/** Scene package ids under package examples/ (dirs with metadata.json, scene.js, host.js). */
 export async function listExampleSceneIds(
   root = packageRoot(),
 ): Promise<string[]> {

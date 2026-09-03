@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { userFacingError } from "../runtime/viewerError";
+import { userFacingError } from "../host/viewerError";
 import { cn } from "@/lib/utils";
 import { CopyHitbox } from "./CopyHitbox";
 

@@ -1,26 +1,24 @@
 import assert from "node:assert/strict";
-import { cp, mkdtemp, mkdir } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { validateScene } from "../dist/validate/scene.js";
 
-const fixtures = join(
-  fileURLToPath(new URL(".", import.meta.url)),
-  "fixtures",
-);
+const fixtures = join(fileURLToPath(new URL(".", import.meta.url)), "fixtures");
 
 async function copyFixture(name, workspace, id = name) {
   const dest = join(workspace, "scenes", id);
   await mkdir(join(workspace, "scenes"), { recursive: true });
   await cp(join(fixtures, name), dest, { recursive: true });
+  return dest;
 }
 
 describe("validateScene", () => {
-  it("accepts valid scene (metadata defaults + three import)", async () => {
+  it("accepts valid-basic", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "scenie-val-"));
-    await copyFixture("valid-basic", workspace, "valid-basic");
+    await copyFixture("valid-basic", workspace);
     const result = await validateScene(workspace, "valid-basic");
     assert.equal(result.ok, true, JSON.stringify(result.issues, null, 2));
   });
@@ -41,176 +39,67 @@ describe("validateScene", () => {
     assert.ok(result.issues.some((i) => i.path.startsWith("params")));
   });
 
-  it("accepts valid runtime export and rejects bad keys/types/null", async () => {
+  it("warns when host.js is missing", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "scenie-val-"));
-    await copyFixture("valid-basic", workspace, "rt-ok");
-    const { writeFile } = await import("node:fs/promises");
-    const dir = join(workspace, "scenes", "rt-ok");
+    const dir = await copyFixture("valid-basic", workspace, "no-host");
+    await rm(join(dir, "host.js"));
     await writeFile(
       join(dir, "scene.js"),
-      `
-import * as THREE from "three";
-export const runtime = { lights: false, helpers: true, camera: true, playback: false };
-export function setup(host) {
-  host.root.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshBasicMaterial()));
-}
-`,
+      `import * as THREE from "three";\nexport const scene = new THREE.Scene();\n`,
       "utf8",
     );
-    const ok = await validateScene(workspace, "rt-ok");
-    assert.equal(ok.ok, true, JSON.stringify(ok.issues, null, 2));
-
-    await writeFile(
-      join(dir, "scene.js"),
-      `
-export const runtime = { grid: false, lights: "yes" };
-export function setup() {}
-`,
-      "utf8",
-    );
-    const bad = await validateScene(workspace, "rt-ok");
-    assert.equal(bad.ok, false);
-    assert.ok(bad.issues.some((i) => i.path === "scene.runtime.grid"));
-    assert.ok(bad.issues.some((i) => i.path === "scene.runtime.lights" && i.message === "want boolean"));
-
-    await writeFile(
-      join(dir, "scene.js"),
-      `
-export const runtime = { loop: false };
-export function setup() {}
-`,
-      "utf8",
-    );
-    const loop = await validateScene(workspace, "rt-ok");
-    assert.equal(loop.ok, false);
-    assert.ok(loop.issues.some((i) => i.path === "scene.runtime.loop"));
-
-    await writeFile(
-      join(dir, "scene.js"),
-      `
-export const runtime = null;
-export function setup() {}
-`,
-      "utf8",
-    );
-    const nul = await validateScene(workspace, "rt-ok");
-    assert.equal(nul.ok, false);
+    const result = await validateScene(workspace, "no-host");
+    assert.equal(result.ok, true, JSON.stringify(result.issues, null, 2));
     assert.ok(
-      nul.issues.some(
-        (i) => i.path === "scene.runtime" && i.message === "want plain object",
+      result.issues.some(
+        (i) =>
+          i.path === "host" &&
+          i.level === "warning" &&
+          /missing host\.js/.test(i.message),
       ),
     );
   });
 
-  it("accepts update function and rejects non-function update", async () => {
+  it("fails when there is no scene export and import did not construct a Scene", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "scenie-val-"));
-    await copyFixture("valid-basic", workspace, "upd-ok");
-    const { writeFile } = await import("node:fs/promises");
-    const dir = join(workspace, "scenes", "upd-ok");
-    await writeFile(
-      join(dir, "scene.js"),
-      `
-import * as THREE from "three";
-export function setup(host) {
-  host.root.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshBasicMaterial()));
-}
-export function update(host, t, dt) {
-  void host; void t; void dt;
-}
-`,
-      "utf8",
-    );
-    const ok = await validateScene(workspace, "upd-ok");
-    assert.equal(ok.ok, true, JSON.stringify(ok.issues, null, 2));
-
-    await writeFile(
-      join(dir, "scene.js"),
-      `
-export function setup() {}
-export const update = 1;
-`,
-      "utf8",
-    );
-    const bad = await validateScene(workspace, "upd-ok");
-    assert.equal(bad.ok, false);
-    assert.ok(bad.issues.some((i) => i.path === "scene.update"));
+    const dir = await copyFixture("valid-basic", workspace, "no-create");
+    await writeFile(join(dir, "scene.js"), "export function setup() {}\n", "utf8");
+    const result = await validateScene(workspace, "no-create");
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((i) => i.path === "scene"));
   });
 
-  it("accepts onFrame function and rejects non-function onFrame", async () => {
+  it("accepts a constructed Scene without an export", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "scenie-val-"));
-    await copyFixture("valid-basic", workspace, "frame-ok");
-    const { writeFile } = await import("node:fs/promises");
-    const dir = join(workspace, "scenes", "frame-ok");
+    const dir = await copyFixture("valid-basic", workspace, "constructed");
     await writeFile(
       join(dir, "scene.js"),
-      `
-import * as THREE from "three";
-export function setup(host) {
-  host.root.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshBasicMaterial()));
-}
-export function onFrame(host, dt) {
-  void host; void dt;
-}
-`,
+      `import * as THREE from "three";\nnew THREE.Scene();\n`,
       "utf8",
     );
-    const ok = await validateScene(workspace, "frame-ok");
-    assert.equal(ok.ok, true, JSON.stringify(ok.issues, null, 2));
-
-    await writeFile(
-      join(dir, "scene.js"),
-      `
-export function setup() {}
-export const onFrame = 1;
-`,
-      "utf8",
-    );
-    const bad = await validateScene(workspace, "frame-ok");
-    assert.equal(bad.ok, false);
-    assert.ok(bad.issues.some((i) => i.path === "scene.onFrame"));
-  });
-
-  it("accepts full runtime opt-out with update", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "scenie-val-"));
-    await copyFixture("valid-basic", workspace, "full-opt");
-    const { writeFile } = await import("node:fs/promises");
-    const dir = join(workspace, "scenes", "full-opt");
-    await writeFile(
-      join(dir, "scene.js"),
-      `
-import * as THREE from "three";
-export const runtime = {
-  lights: false,
-  helpers: false,
-  camera: false,
-  playback: false,
-};
-export function setup(host) {
-  host.root.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshBasicMaterial()));
-}
-export function update(host, t, dt) {
-  void host; void t; void dt;
-}
-`,
-      "utf8",
-    );
-    const result = await validateScene(workspace, "full-opt");
+    const result = await validateScene(workspace, "constructed");
     assert.equal(result.ok, true, JSON.stringify(result.issues, null, 2));
   });
 
-  it("does not require dispose and ignores its presence", async () => {
+  it("requires bindInput on host.js when host.camera is false", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "scenie-val-"));
-    await copyFixture("valid-basic", workspace, "with-dispose");
-    const { writeFile } = await import("node:fs/promises");
+    const dir = await copyFixture("valid-basic", workspace, "cam-off");
+    const hostSrc = await readFile(join(dir, "host.js"), "utf8");
     await writeFile(
-      join(workspace, "scenes", "with-dispose", "scene.js"),
-      `
-export function setup() {}
-export function dispose() {}
-`,
+      join(dir, "host.js"),
+      `export const host = { camera: false };\n${hostSrc}`,
       "utf8",
     );
-    const result = await validateScene(workspace, "with-dispose");
-    assert.equal(result.ok, true, JSON.stringify(result.issues, null, 2));
+    const missing = await validateScene(workspace, "cam-off");
+    assert.equal(missing.ok, false);
+    assert.ok(missing.issues.some((i) => i.path === "host.bindInput"));
+
+    await writeFile(
+      join(dir, "host.js"),
+      `export const host = { camera: false };\nexport function bindInput() {}\n${hostSrc}`,
+      "utf8",
+    );
+    const ok = await validateScene(workspace, "cam-off");
+    assert.equal(ok.ok, true, JSON.stringify(ok.issues, null, 2));
   });
 });

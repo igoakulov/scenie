@@ -1,4 +1,4 @@
-import type { SceneMetadata } from "../runtime/loadScene";
+import type { SceneMetadata } from "../host/loadScene";
 import { DescriptionText } from "../math/DescriptionText";
 import { CopyIconButton } from "./CopyHitbox";
 import {

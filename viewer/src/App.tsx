@@ -5,15 +5,16 @@ import { ExploreTools } from "./chrome/ExploreTools";
 import { LibraryPanel } from "./chrome/LibraryPanel";
 import { ParamsPanel } from "./chrome/params";
 import { Button } from "@/components/ui/button";
-import { loadScene, type LoadedScene } from "./runtime/loadScene";
-import type { ParamValue } from "./runtime/defaults";
+import { loadScene, viewToDimensions, type LoadedScene } from "./host/loadScene";
+import type { ParamValue } from "./host/defaults";
 import {
   DEFAULT_GRID,
-  SceneRuntime,
+  SceneHost,
   type GridState,
-} from "./runtime/SceneRuntime";
-import { gridForDimensions } from "./runtime/grid";
-import { userFacingError } from "./runtime/viewerError";
+} from "./host/SceneHost";
+import { gridForDimensions } from "./host/grid";
+import { userFacingError } from "./host/viewerError";
+import { CopyIconButton } from "./chrome/CopyHitbox";
 import { cn } from "@/lib/utils";
 
 type SheetTab = "library" | "summary" | "explore";
@@ -52,7 +53,7 @@ function paramBagsEqual(
 
 export function App() {
   const canvasHostRef = useRef<HTMLDivElement>(null);
-  const runtimeRef = useRef<SceneRuntime | null>(null);
+  const hostRef = useRef<SceneHost | null>(null);
 
   const [sheetOpen, setSheetOpen] = useState(true);
   const [sceneId, setSceneId] = useState<string | null>(() => readSceneFromUrl());
@@ -70,15 +71,18 @@ export function App() {
   const [playback, setPlayback] = useState({ show: false, playing: false });
 
   const hasScene = sceneId != null;
+  const sceneIdRef = useRef(sceneId);
+  sceneIdRef.current = sceneId;
 
   useEffect(() => {
     const host = canvasHostRef.current;
     if (!host) return;
-    const rt = new SceneRuntime({
+    const rt = new SceneHost({
       container: host,
-      onError: (message) => setError(userFacingError(message)),
+      onError: (message) =>
+        setError(userFacingError(message, sceneIdRef.current)),
     });
-    runtimeRef.current = rt;
+    hostRef.current = rt;
     const initial = gridByKey.get(gridKey(readSceneFromUrl())) ?? {
       ...DEFAULT_GRID,
     };
@@ -90,7 +94,7 @@ export function App() {
     return () => {
       unsub();
       rt.dispose();
-      runtimeRef.current = null;
+      hostRef.current = null;
     };
   }, []);
 
@@ -110,18 +114,18 @@ export function App() {
         e.preventDefault();
         setSheetOpen((o) => !o);
       } else if (e.key === "r" || e.key === "R") {
-        const flags = runtimeRef.current?.getRuntimeFlags();
+        const flags = hostRef.current?.getHostFlags();
         if (flags && !flags.camera) return;
         e.preventDefault();
-        runtimeRef.current?.resetView();
+        hostRef.current?.resetView();
       } else if (e.key === " " || e.code === "Space") {
         // When camera: false, Space is free for the scene (jump/fly); use Explore Play/Pause.
-        const flags = runtimeRef.current?.getRuntimeFlags();
+        const flags = hostRef.current?.getHostFlags();
         if (flags && !flags.camera) return;
-        const ui = runtimeRef.current?.getPlaybackUi();
+        const ui = hostRef.current?.getPlaybackUi();
         if (!ui?.show) return;
         e.preventDefault();
-        runtimeRef.current?.togglePlaying();
+        hostRef.current?.togglePlaying();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -130,7 +134,7 @@ export function App() {
 
   // Load / unload canvas from selection only — sheet tab does not clear selection.
   useEffect(() => {
-    const rt = runtimeRef.current;
+    const rt = hostRef.current;
     if (!rt) return;
 
     if (!sceneId) {
@@ -158,19 +162,19 @@ export function App() {
       try {
         const scene = await loadScene(sceneId);
         if (cancelled) return;
-        const dim = scene.metadata.dimensions;
+        const dim = viewToDimensions(scene.host.view);
         const saved = gridByKey.get(sceneId) ?? { ...DEFAULT_GRID };
         const next = gridForDimensions(saved, dim);
         gridByKey.set(sceneId, next);
         setGrid(next);
         rt.setGridState(next);
-        rt.mountScene(scene);
+        await rt.mountScene(scene);
         setLoaded(scene);
         setLiveParams({ ...scene.params });
         document.title = `${scene.metadata.title} · Scenie`;
       } catch (err) {
         if (cancelled) return;
-        setError(userFacingError(err));
+        setError(userFacingError(err, sceneId));
         setLoaded(null);
         setLiveParams({});
         rt.showEmpty();
@@ -194,7 +198,7 @@ export function App() {
   const onGridChange = useCallback(
     (partial: Partial<GridState>) => {
       setGrid((prev) => {
-        const dim = loaded?.metadata.dimensions ?? 3;
+        const dim = loaded ? viewToDimensions(loaded.host.view) : 3;
         const merged: GridState = {
           ...prev,
           ...partial,
@@ -205,12 +209,12 @@ export function App() {
           showYZ: partial.showYZ ?? prev.showYZ,
         };
         const next = gridForDimensions(merged, dim);
-        runtimeRef.current?.setGridState(next);
+        hostRef.current?.setGridState(next);
         gridByKey.set(gridKey(sceneId), next);
         return next;
       });
     },
-    [sceneId, loaded?.metadata.dimensions],
+    [sceneId, loaded?.host.view],
   );
 
   const openScene = useCallback((id: string) => {
@@ -241,7 +245,7 @@ export function App() {
 
   const onParamChange = useCallback(
     (key: string, value: ParamValue) => {
-      const rt = runtimeRef.current;
+      const rt = hostRef.current;
       if (!loaded || !rt) return;
 
       setLiveParams((prev) => {
@@ -258,6 +262,7 @@ export function App() {
                 new Error(
                   `onParamsChange threw: ${err instanceof Error ? err.message : String(err)}`,
                 ),
+                loaded.id,
               ),
             );
             return prev;
@@ -272,14 +277,16 @@ export function App() {
         remountTimerRef.current = setTimeout(() => {
           remountTimerRef.current = null;
           const bag = pendingParamsRef.current;
-          if (!bag || !runtimeRef.current) return;
-          try {
-            runtimeRef.current.remountWithParams(loaded, bag);
-            setError(null);
-          } catch (err) {
-            setError(userFacingError(err));
-          }
-        }, 80);
+          if (!bag || !hostRef.current) return;
+          void (async () => {
+            try {
+              await hostRef.current.remountWithParams(bag);
+              setError(null);
+            } catch (err) {
+              setError(userFacingError(err, loaded.id));
+            }
+          })();
+        }, 500);
 
         return next;
       });
@@ -326,7 +333,15 @@ export function App() {
 
       <div className="viewport">
         <div className="viewport-canvas-host" ref={canvasHostRef} />
-        {error && <div className="viewport-error">{error}</div>}
+        {error && (
+          <div className="viewport-error" role="alert">
+            <p className="m-0 min-w-0 flex-1">{error}</p>
+            <CopyIconButton
+              text={error}
+              className="text-destructive hover:text-destructive"
+            />
+          </div>
+        )}
       </div>
 
       <aside
@@ -397,31 +412,22 @@ export function App() {
                   loading && (
                     <p className="text-xs text-muted-foreground">Loading…</p>
                   )}
-                {sheetTab === "summary" &&
-                  hasScene &&
-                  !loaded &&
-                  !loading &&
-                  error && (
-                    <p className="sheet-selectable text-xs text-muted-foreground wrap-anywhere">
-                      {error}
-                    </p>
-                  )}
                 {sheetTab === "explore" && hasScene && (
                   <div className="flex min-w-0 flex-col gap-3">
                     {loaded && loaded.id === sceneId ? (
                       <>
                         <ExploreTools
                           grid={grid}
-                          dimensions={loaded.metadata.dimensions}
-                          showHelpers={loaded.runtime.helpers}
-                          showCameraReset={loaded.runtime.camera}
+                          dimensions={viewToDimensions(loaded.host.view)}
+                          showHelpers={loaded.host.helpers}
+                          showCameraReset={loaded.host.camera}
                           showPlayback={playback.show}
                           playing={playback.playing}
-                          spaceTogglesPlayback={loaded.runtime.camera}
+                          spaceTogglesPlayback={loaded.host.camera}
                           onGridChange={onGridChange}
-                          onResetView={() => runtimeRef.current?.resetView()}
+                          onResetView={() => hostRef.current?.resetView()}
                           onTogglePlay={() =>
-                            runtimeRef.current?.togglePlaying()
+                            hostRef.current?.togglePlaying()
                           }
                         />
                         {loaded.paramsTree.length > 0 && (

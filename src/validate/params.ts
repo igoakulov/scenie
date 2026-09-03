@@ -107,7 +107,7 @@ function rejectReadOnlyKey(
     push(
       issues,
       `${path}.key`,
-      `${kind} is read-only; omit key (not in host.params)`,
+      `${kind} is read-only; omit key (not in the params bag)`,
     );
   }
 }

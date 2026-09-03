@@ -2,7 +2,7 @@
  * Explore params: accordion sections for `type: "card"` (multiple open).
  */
 import type { ReactNode } from "react";
-import type { ParamsNode } from "../../runtime/paramsTree";
+import type { ParamsNode } from "../../host/paramsTree";
 import { MathText } from "../../math/renderMath";
 import {
   Accordion,

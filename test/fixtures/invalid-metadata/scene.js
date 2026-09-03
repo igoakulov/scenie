@@ -1,1 +1,3 @@
-export function setup() {}
+import * as THREE from "three";
+
+export const scene = new THREE.Scene();

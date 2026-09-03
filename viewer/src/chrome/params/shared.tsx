@@ -1,10 +1,10 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import type { ParamValue } from "../../runtime/defaults";
+import type { ParamValue } from "../../host/defaults";
 import {
   resolveLabelValue,
   type ParamsNode,
   type StringNode,
-} from "../../runtime/paramsTree";
+} from "../../host/paramsTree";
 import { MathText } from "../../math/renderMath";
 import { MultiSelectField } from "../MultiSelectField";
 import { NumberField } from "../NumberField";

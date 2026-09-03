@@ -84,7 +84,7 @@ describe("CLI", () => {
     );
     await writeFile(
       join(bombDir, "scene.js"),
-      `throw new Error("scene.js must not be imported by list");\nexport function setup() {}\n`,
+      `throw new Error("scene.js must not be imported by list");\nexport const scene = {};\n`,
     );
 
     r = await runScenie(["list"], env);

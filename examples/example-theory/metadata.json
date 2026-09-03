@@ -1,6 +1,6 @@
 {
   "title": "Example theory: linear algebra",
-  "description": "First-day linear algebra board: free vectors in $\\mathbb{R}^3$, the standard basis, scalar stretch, and vector addition.\n\n### Theory\n\n- A **vector** $\\mathbf{u} = (u_x, u_y, u_z)$ is an arrow: direction + magnitude. Components are signed lengths along the axes.\n- The **standard basis** $\\{\\mathbf{e}_1, \\mathbf{e}_2, \\mathbf{e}_3\\}$ (or $\\mathbf{i},\\mathbf{j},\\mathbf{k}$) are unit arrows along $+X$, $+Y$, $+Z$. Every vector is a linear combination:\n$$\\mathbf{u} = u_x\\,\\mathbf{e}_1 + u_y\\,\\mathbf{e}_2 + u_z\\,\\mathbf{e}_3.$$\n- **Scalar multiplication** $s\\,\\mathbf{u}$ stretches ($|s|>1$), shrinks ($0<|s|<1$), flips ($s<0$), or zeros ($s=0$) the arrow.\n- **Vector addition** $\\mathbf{u}+\\mathbf{v}$ is tip-to-tail (or the diagonal of the parallelogram):\n$$\\mathbf{u}+\\mathbf{v} = (u_x+v_x,\\; u_y+v_y,\\; u_z+v_z).$$\n\nToggle layers and drag the numbers while you talk. Orbit the view; keep helpers on for orientation.",
+  "description": "A first look at vectors in $\\mathbb{R}^3$: the standard basis, adding two arrows with the parallelogram rule, and stretching (or flipping) a vector by a scalar. Drag the components and the scalar in the cards; orbit the view to see depth.\n\n## Standard basis\n\nThe **standard basis** of $\\mathbb{R}^3$ is the triple of unit arrows along the coordinate axes:\n\n$$\\hat{\\imath}=(1,0,0),\\quad \\hat{\\jmath}=(0,1,0),\\quad \\hat{k}=(0,0,1).$$\n\nAny vector is a **linear combination** of these directions — its coordinates *are* the coefficients:\n\n$$\\mathbf{u}=u_x\\hat{\\imath}+u_y\\hat{\\jmath}+u_z\\hat{k}=(u_x,u_y,u_z).$$\n\n## Vector addition\n\nAddition is **componentwise**, which is the same as the geometric **parallelogram** (or tip-to-tail) rule:\n\n$$\\mathbf{u}+\\mathbf{v}=(u_x+v_x,\\,u_y+v_y,\\,u_z+v_z).$$\n\nPlace $\\mathbf{v}$ at the tip of $\\mathbf{u}$ (dashed edge): that tip is $\\mathbf{u}+\\mathbf{v}$. The other dashed edge is $\\mathbf{u}$ placed at the tip of $\\mathbf{v}$. Both paths meet at the same point — addition is commutative.\n\n## Scalar multiplication\n\nA real number $c$ **stretches** $\\mathbf{u}$ along the same line:\n\n$$c\\mathbf{u}=(c u_x,\\,c u_y,\\,c u_z).$$\n\n- $|c|>1$ lengthens; $0<|c|<1$ shortens; $c=0$ collapses to the origin.\n- $c<0$ **reverses** direction (a $180^\\circ$ flip) and then stretches by $|c|$.\n- $c\\mathbf{u}$ is always **parallel** to $\\mathbf{u}$ (or zero).\n\nLength scales by the absolute value: $\\|c\\mathbf{u}\\|=|c|\\,\\|\\mathbf{u}\\|$.\n\nTogether, addition and scalar stretch are the two operations that make $\\mathbb{R}^3$ a **vector space** — every later idea in the course (span, linear maps, matrices) is built from these.",
   "tags": [
     "example",
     "theory",
@@ -10,10 +10,9 @@
     "education",
     "3d"
   ],
-  "dimensions": 3,
   "attribution": {
     "author": "igoakulov",
-    "model": "grok-4.5-high",
-    "prompt": "With the Scenie skill, make a simple 3d scene for my students in class on linear algebra intro. Cover vector addition and scalar stretch, basis directions... Keep it clear enough to open while we talk. Add supporting theory in description."
+    "model": "grok-4.6-high",
+    "prompt": "Make a simple 3d scene for my students in class on linear algebra intro. Cover vector addition and scalar stretch, basis directions... Add supporting theory in description."
   }
 }

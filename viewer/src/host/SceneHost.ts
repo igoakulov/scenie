@@ -4,8 +4,8 @@ import { CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
 import {
   discoverAnnotations,
   disposeAnnotations,
+  stripForeignCss2dOverlays,
   syncAnnotationTexts,
-  type AnnotationHandle,
 } from "./annotations";
 import {
   DEFAULT_GRID,
@@ -14,35 +14,37 @@ import {
 } from "./grid";
 import type { ParamValue } from "./defaults";
 import {
-  sceneBaseUrlAbsolute,
+  importSceneGraph,
   type LoadedScene,
-  type SceneHostContext,
   type SceneMetadata,
 } from "./loadScene";
 import {
-  DEFAULT_RUNTIME_FLAGS,
-  type RuntimeFlags,
-} from "./runtimeFlags";
-import { rootHasAgentLight, stripAgentCameras } from "./sceneOwnership";
+  DEFAULT_HOST_FLAGS,
+  viewToDimensions,
+  type HostFlags,
+} from "./hostFlags";
+import {
+  asCamera,
+  firstCameraInGraph,
+  poseFromCamera,
+  rootHasAgentLight,
+} from "./sceneOwnership";
 import { SceneSideEffects } from "./sceneSideEffects";
 
-/** Match shadcn dark --background (zinc-950). */
 const BG = 0x09090b;
-
 const IDLE_ORBIT_SPEED = 1.0;
 
 export interface PlaybackUi {
-  /** True when Play/Pause chrome should show (transport eligible). */
   show: boolean;
   playing: boolean;
 }
 
-export interface SceneRuntimeOptions {
+export interface SceneHostOptions {
   container: HTMLElement;
   onError?: (message: string) => void;
 }
 
-export class SceneRuntime {
+export class SceneHost {
   private container: HTMLElement;
   private onError?: (message: string) => void;
   private renderer: THREE.WebGLRenderer;
@@ -52,35 +54,30 @@ export class SceneRuntime {
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
   private controls: OrbitControls;
   private grid: GridController;
-  /** Runtime default lights — disabled when setup adds any Light under root (if lights flag on). */
   private defaultLights: THREE.Light[] = [];
+  private defaultBg = new THREE.Color(BG);
   private raf = 0;
   private disposed = false;
-  private annotations: AnnotationHandle[] = [];
-  private dimensions: 2 | 3 = 3;
+  private annotations: ReturnType<typeof discoverAnnotations> = [];
+  private view: "2d" | "3d" = "3d";
   private defaultCamPos = new THREE.Vector3(6, 4, 8);
   private defaultTarget = new THREE.Vector3(0, 0, 0);
   private ro: ResizeObserver;
   private sideEffects = new SceneSideEffects();
-  private flags: RuntimeFlags = { ...DEFAULT_RUNTIME_FLAGS };
-  /** Host OrbitControls intended for navigation (enabled + connected). */
+  private flags: HostFlags = { ...DEFAULT_HOST_FLAGS };
   private hostNavActive = true;
-  /** Whether host OrbitControls listeners are currently attached. */
   private hostControlsConnected = true;
 
   private loaded: LoadedScene | null = null;
   private sceneParams: Record<string, ParamValue> = {};
-  /** Sim clock (seconds). Advances only while playing with `update`. */
   private t = 0;
   private playing = false;
   private lastFrameMs: number | null = null;
-  /** After update() throws, stay paused until user hits Play (no spam). */
   private updateFaulted = false;
-  /** After onFrame() throws, skip further onFrame until remount (no spam). */
-  private onFrameFaulted = false;
+  private updateViewFaulted = false;
   private playbackListeners = new Set<() => void>();
 
-  constructor(opts: SceneRuntimeOptions) {
+  constructor(opts: SceneHostOptions) {
     this.container = opts.container;
     this.onError = opts.onError;
 
@@ -103,7 +100,7 @@ export class SceneRuntime {
     this.container.appendChild(this.labelRenderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(BG);
+    this.scene.background = this.defaultBg;
 
     this.root = new THREE.Group();
     this.root.name = "scene-root";
@@ -128,9 +125,8 @@ export class SceneRuntime {
     this.controls.dampingFactor = 0.08;
     this.controls.autoRotateSpeed = IDLE_ORBIT_SPEED;
     this.controls.target.copy(this.defaultTarget);
-    // Any host-nav gesture permanently pauses idle orbit until Play.
     this.controls.addEventListener("start", this.onControlsStart);
-    this.applyCameraMode(3);
+    this.applyCameraMode("3d");
 
     this.ro = new ResizeObserver(() => this.resizeNow());
     this.ro.observe(this.container);
@@ -138,7 +134,7 @@ export class SceneRuntime {
     this.loop();
   }
 
-  getRuntimeFlags(): RuntimeFlags {
+  getHostFlags(): HostFlags {
     return { ...this.flags };
   }
 
@@ -178,7 +174,6 @@ export class SceneRuntime {
     this.setPlaying(!this.playing);
   }
 
-  /** Reset host camera pose. Play state unchanged (contract §6.1). */
   resetView(): void {
     this.camera.position.copy(this.defaultCamPos);
     this.controls.target.copy(this.defaultTarget);
@@ -189,7 +184,6 @@ export class SceneRuntime {
     }
   }
 
-  /** Clear root + annotations only (listeners handled by sideEffects). */
   private clearRoot(): void {
     disposeAnnotations(this.annotations);
     this.annotations = [];
@@ -200,17 +194,23 @@ export class SceneRuntime {
     }
   }
 
-  /** Contract §9 tear-down: listeners then root. */
-  private tearDownSceneContent(): void {
-    this.sideEffects.stop();
+  private tearDownSceneContent(dropInput: boolean): void {
+    this.sideEffects.stopBucket("scene");
+    if (dropInput) this.sideEffects.stopBucket("input");
+    try {
+      this.loaded?.module.dispose?.();
+    } catch (err) {
+      this.onError?.(
+        `dispose() threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     this.clearRoot();
-    // Listener GC can strip OrbitControls pointermove/up; reconnect host nav.
+    document.exitPointerLock?.();
     if (this.hostNavActive) this.reassertHostControls();
   }
 
   private reassertHostControls(): void {
     this.controls.disconnect();
-    // Three disconnect() does not clear _pointers / state; stale drag skips move/up rebind.
     const c = this.controls as OrbitControls & {
       _pointers?: unknown[];
       _pointerPositions?: Record<string, unknown>;
@@ -220,53 +220,42 @@ export class SceneRuntime {
     if (c._pointerPositions && typeof c._pointerPositions === "object") {
       for (const k of Object.keys(c._pointerPositions)) delete c._pointerPositions[k];
     }
-    c.state = -1; // OrbitControls _STATE.NONE
+    c.state = -1;
     this.controls.connect();
     this.hostControlsConnected = true;
     this.controls.enabled = true;
     this.controls.update();
   }
 
-  mountScene(loaded: LoadedScene): void {
-    this.tearDownSceneContent();
+  async mountScene(loaded: LoadedScene): Promise<void> {
+    this.tearDownSceneContent(true);
     this.loaded = loaded;
-    this.flags = { ...loaded.runtime };
-    this.dimensions = loaded.metadata.dimensions;
+    this.flags = { ...loaded.host };
+    this.view = loaded.host.view;
     this.sceneParams = { ...loaded.params };
     this.t = 0;
     this.updateFaulted = false;
-    this.onFrameFaulted = false;
+    this.updateViewFaulted = false;
     this.lastFrameMs = null;
-    this.applyCameraMode(this.dimensions);
+    this.applyCameraMode(this.view);
     this.applyHostPolicy();
     this.resetView();
-    this.runSetup(loaded, loaded.params, { adoptStartCamera: true });
-    // Autoplay content update always; idle orbit only when transport chrome eligible.
-    this.playing =
-      this.hasUpdate() || this.isIdleOrbitEligible();
+    await this.mountGraph({ adoptStartCamera: true, bindInput: true });
+    this.playing = this.hasUpdate() || this.isIdleOrbitEligible();
     this.kickUpdateOnce();
     this.applyAutoRotate();
     this.notifyPlayback();
+    this.restartLoop();
   }
 
-  /**
-   * Re-run setup after param edits. Keeps camera pose, flags, and play/pause.
-   * Resets t when update exists.
-   */
-  remountWithParams(
-    loaded: LoadedScene,
-    params: LoadedScene["params"],
-  ): void {
-    this.tearDownSceneContent();
-    this.loaded = loaded;
+  async remountWithParams(params: LoadedScene["params"]): Promise<void> {
+    this.tearDownSceneContent(false);
     this.sceneParams = { ...params };
-    // Flags unchanged on remount (static export). Keep playing boolean.
     if (this.hasUpdate()) this.t = 0;
     this.updateFaulted = false;
-    this.onFrameFaulted = false;
+    this.updateViewFaulted = false;
     this.applyHostPolicy();
-    this.runSetup(loaded, params, { adoptStartCamera: false });
-    // Keep playing; force on if content update exists (playback:false still runs).
+    await this.mountGraph({ adoptStartCamera: false, bindInput: false });
     if (this.hasUpdate()) {
       if (!this.flags.playback) this.playing = true;
     } else if (!this.isIdleOrbitEligible()) {
@@ -275,64 +264,105 @@ export class SceneRuntime {
     this.kickUpdateOnce();
     this.applyAutoRotate();
     this.notifyPlayback();
+    this.restartLoop();
   }
 
-  private runSetup(
-    loaded: LoadedScene,
-    params: LoadedScene["params"],
-    opts: { adoptStartCamera: boolean },
-  ): void {
+  private async mountGraph(opts: {
+    adoptStartCamera: boolean;
+    bindInput: boolean;
+  }): Promise<void> {
+    const loaded = this.loaded;
+    if (!loaded) return;
     this.sideEffects.start(this.renderer.domElement);
+    this.sideEffects.setBucket("scene");
     try {
-      loaded.module.setup(this.buildHost(params));
-    } catch (err) {
-      this.sideEffects.stop();
-      throw new Error(
-        `setup() threw: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    this.applyDefaultLightsPolicy();
-    if (this.flags.camera) {
-      const view = stripAgentCameras(this.root);
-      if (opts.adoptStartCamera && view) {
-        this.defaultCamPos.copy(view.position);
-        this.defaultTarget.copy(view.target);
-        this.camera.position.copy(view.position);
-        this.controls.target.copy(view.target);
-        if (this.hostNavActive) this.controls.update();
+      let imported;
+      try {
+        imported = await importSceneGraph(
+          loaded.id,
+          this.sceneParams,
+          loaded.injectParams,
+        );
+      } catch (err) {
+        this.sideEffects.stopBucket("scene");
+        throw err;
       }
+      const content =
+        asObject3D(imported.scene) ?? asObject3D(imported.captured);
+      if (!content) {
+        this.sideEffects.stopBucket("scene");
+        throw new Error("scene.js must export a THREE.Scene or construct one");
+      }
+      loaded.module.scene = imported.scene ?? imported.captured;
+      loaded.module.camera = imported.camera;
+      loaded.module.update = imported.update;
+      loaded.module.dispose = imported.dispose;
+      this.root.add(content);
+      this.stripForeignWebGLCanvases();
+      stripForeignCss2dOverlays(this.root, this.labelRenderer.domElement);
+      this.applyDefaultLightsPolicy();
+      if (this.flags.camera && opts.adoptStartCamera) {
+        const cam =
+          asCamera(imported.camera) ?? firstCameraInGraph(this.root);
+        if (cam) this.applyStartView(cam);
+      }
+      if (opts.bindInput && typeof loaded.module.bindInput === "function") {
+        this.sideEffects.setBucket("input");
+        try {
+          loaded.module.bindInput(this.renderer.domElement, this.camera);
+        } catch (err) {
+          this.sideEffects.stopBucket("input");
+          throw new Error(
+            `bindInput() threw: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        this.sideEffects.setBucket("scene");
+      }
+      this.annotations = discoverAnnotations(this.root);
+    } finally {
+      this.restartLoop();
     }
-    this.annotations = discoverAnnotations(this.root);
   }
 
-  private buildHost(
-    params: Record<string, ParamValue> = this.sceneParams,
-  ): SceneHostContext {
-    const id = this.loaded?.id ?? "";
-    return {
-      root: this.root,
-      params: { ...params },
-      baseUrl: sceneBaseUrlAbsolute(id),
-      camera: this.camera,
-      domElement: this.renderer.domElement,
-    };
+  private applyStartView(cam: THREE.Camera): void {
+    const start = poseFromCamera(cam);
+    this.defaultCamPos.copy(start.position);
+    this.defaultTarget.copy(start.target);
+    this.camera.position.copy(start.position);
+    this.controls.target.copy(start.target);
+    if (start.near != null) this.camera.near = start.near;
+    if (start.far != null) this.camera.far = start.far;
+    if (
+      start.fov != null &&
+      this.camera instanceof THREE.PerspectiveCamera
+    ) {
+      this.camera.fov = start.fov;
+    }
+    this.camera.updateProjectionMatrix();
+    if (this.hostNavActive) this.controls.update();
+  }
+
+  private stripForeignWebGLCanvases(): void {
+    for (const el of document.querySelectorAll("canvas")) {
+      if (el === this.renderer.domElement) continue;
+      if (el.getContext("webgl2") || el.getContext("webgl")) el.remove();
+    }
   }
 
   private hasUpdate(): boolean {
     return typeof this.loaded?.module.update === "function";
   }
 
-  private hasOnFrame(): boolean {
-    return typeof this.loaded?.module.onFrame === "function";
+  private hasUpdateView(): boolean {
+    return typeof this.loaded?.module.updateView === "function";
   }
 
-  /** Host idle orbit: static 3D + host camera + playback + no content update. */
   private isIdleOrbitEligible(): boolean {
     return (
       !this.hasUpdate() &&
       this.flags.camera &&
       this.flags.playback &&
-      this.dimensions === 3 &&
+      this.view === "3d" &&
       this.loaded != null
     );
   }
@@ -342,10 +372,17 @@ export class SceneRuntime {
     return this.hasUpdate() || this.isIdleOrbitEligible();
   }
 
+  /** Import silences rAF; a host frame in that window never reschedules. */
+  private restartLoop(): void {
+    if (this.disposed) return;
+    cancelAnimationFrame(this.raf);
+    this.loop();
+  }
+
   private kickUpdateOnce(): void {
     if (!this.hasUpdate() || !this.loaded) return;
     try {
-      this.loaded.module.update!(this.buildHost(), this.t, 0);
+      this.loaded.module.update!(this.t, 0);
     } catch (err) {
       this.handleUpdateError(err);
     }
@@ -360,9 +397,9 @@ export class SceneRuntime {
     this.onError?.(msg);
   }
 
-  private handleOnFrameError(err: unknown): void {
-    this.onFrameFaulted = true;
-    const msg = `onFrame() threw: ${err instanceof Error ? err.message : String(err)}`;
+  private handleUpdateViewError(err: unknown): void {
+    this.updateViewFaulted = true;
+    const msg = `updateView() threw: ${err instanceof Error ? err.message : String(err)}`;
     this.onError?.(msg);
   }
 
@@ -372,7 +409,6 @@ export class SceneRuntime {
   }
 
   private onControlsStart = (): void => {
-    // Only permanent-pause when idle orbit is the motion source (not content update).
     if (!this.isIdleOrbitEligible()) return;
     if (this.playing) this.setPlaying(false);
   };
@@ -415,23 +451,42 @@ export class SceneRuntime {
     }
   }
 
-  /** No scene content — Grid + default lights remain (runtime-owned). */
+  private copySceneAtmosphere(): void {
+    const content = this.root.children[0] as THREE.Object3D | undefined;
+    if (content && (content as THREE.Scene).isScene) {
+      const s = content as THREE.Scene;
+      this.scene.background = s.background ?? this.defaultBg;
+      this.scene.fog = s.fog;
+      this.scene.environment = s.environment;
+    } else {
+      this.scene.background = this.defaultBg;
+      this.scene.fog = null;
+      this.scene.environment = null;
+    }
+  }
+
   showEmpty(): void {
-    this.tearDownSceneContent();
+    this.tearDownSceneContent(true);
     this.loaded = null;
     this.sceneParams = {};
-    this.flags = { ...DEFAULT_RUNTIME_FLAGS };
+    this.flags = { ...DEFAULT_HOST_FLAGS };
+    this.view = "3d";
     this.t = 0;
     this.playing = false;
     this.updateFaulted = false;
+    this.updateViewFaulted = false;
     this.lastFrameMs = null;
     this.controls.autoRotate = false;
+    this.scene.background = this.defaultBg;
+    this.scene.fog = null;
+    this.scene.environment = null;
     for (const light of this.defaultLights) light.visible = true;
     this.grid.group.visible = true;
     this.setHostNavActive(true);
-    this.applyCameraMode(3);
+    this.applyCameraMode("3d");
     this.resetView();
     this.notifyPlayback();
+    this.restartLoop();
   }
 
   dispose(): void {
@@ -440,7 +495,7 @@ export class SceneRuntime {
     cancelAnimationFrame(this.raf);
     this.ro.disconnect();
     this.controls.removeEventListener("start", this.onControlsStart);
-    this.tearDownSceneContent();
+    this.tearDownSceneContent(true);
     this.playbackListeners.clear();
     this.grid.dispose();
     this.controls.dispose();
@@ -449,7 +504,8 @@ export class SceneRuntime {
     this.labelRenderer.domElement.remove();
   }
 
-  private applyCameraMode(dim: 2 | 3): void {
+  private applyCameraMode(view: "2d" | "3d"): void {
+    const dim = viewToDimensions(view);
     const aspect = this.aspect();
     const prevPos = this.camera.position.clone();
     const prevTarget = this.controls.target.clone();
@@ -524,6 +580,7 @@ export class SceneRuntime {
     }
 
     if (this.hostNavActive) this.controls.update();
+    this.copySceneAtmosphere();
     this.renderer.render(this.scene, this.camera);
     this.labelRenderer.render(this.scene, this.camera);
   }
@@ -538,8 +595,6 @@ export class SceneRuntime {
     }
     this.lastFrameMs = now;
 
-    // Content update: when playback false, always run (no chrome to pause).
-    // When playback true, honor playing. Idle orbit uses playing + autoRotate only.
     if (
       this.hasUpdate() &&
       this.loaded &&
@@ -548,27 +603,26 @@ export class SceneRuntime {
     ) {
       this.t += dt;
       try {
-        this.loaded.module.update!(this.buildHost(), this.t, dt);
+        this.loaded.module.update!(this.t, dt);
       } catch (err) {
         this.handleUpdateError(err);
       }
     }
 
-    // Wall-clock frame hook (input/camera); runs even while content is paused.
-    if (this.hasOnFrame() && this.loaded && !this.onFrameFaulted) {
+    if (this.hasUpdateView() && this.loaded && !this.updateViewFaulted) {
       try {
-        this.loaded.module.onFrame!(this.buildHost(), dt);
+        this.loaded.module.updateView!(dt, this.camera);
       } catch (err) {
-        this.handleOnFrameError(err);
+        this.handleUpdateViewError(err);
       }
     }
 
     if (this.annotations.length) syncAnnotationTexts(this.annotations);
 
-    // autoRotate needs controls.update(); also damping when host nav on.
     if (this.hostNavActive || this.controls.autoRotate) {
       this.controls.update();
     }
+    this.copySceneAtmosphere();
     this.renderer.render(this.scene, this.camera);
     this.labelRenderer.render(this.scene, this.camera);
   };
@@ -580,11 +634,28 @@ function disposeTree(obj: THREE.Object3D): void {
     if (mesh.geometry) mesh.geometry.dispose();
     const mat = mesh.material;
     if (mat) {
-      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-      else mat.dispose();
+      if (Array.isArray(mat)) mat.forEach(disposeMaterial);
+      else disposeMaterial(mat);
     }
   });
 }
 
-export type { SceneMetadata, GridState, RuntimeFlags };
-export { DEFAULT_GRID, DEFAULT_RUNTIME_FLAGS };
+function disposeMaterial(mat: THREE.Material): void {
+  const rec = mat as unknown as Record<string, unknown>;
+  for (const v of Object.values(rec)) {
+    if (v && typeof v === "object" && (v as { isTexture?: boolean }).isTexture) {
+      (v as THREE.Texture).dispose();
+    }
+  }
+  mat.dispose();
+}
+
+export type { SceneMetadata, GridState, HostFlags };
+export { DEFAULT_GRID, DEFAULT_HOST_FLAGS };
+
+function asObject3D(value: unknown): THREE.Object3D | null {
+  if (value instanceof THREE.Object3D) return value;
+  const obj = value as { isObject3D?: boolean } | null;
+  if (obj && obj.isObject3D) return value as THREE.Object3D;
+  return null;
+}

@@ -34,9 +34,13 @@ export function printSceneBlock(
 }
 
 export function formatIssueLines(
-  issues: { path: string; message: string }[],
+  issues: { path: string; message: string; level?: "error" | "warning" }[],
 ): string[] {
-  return issues.map((i) => `${i.path}: ${i.message}`);
+  return issues.map((i) =>
+    i.level === "warning"
+      ? `warn ${i.path}: ${i.message}`
+      : `${i.path}: ${i.message}`,
+  );
 }
 
 export function printHint(msg: string): void {

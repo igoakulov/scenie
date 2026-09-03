@@ -6,15 +6,15 @@ Talk to your AI — it builds interactive 2D/3D scenes for class / homework / de
 
 Three example scenes from real prompts. Come included in the package your AI agent installs (see Install section).
 
-### Theory: linear algebra ([prompt](https://github.com/igoakulov/scenie/blob/main/examples/example-theory/metadata.json))
+1. Theory: linear algebra - [see prompt](https://github.com/igoakulov/scenie/blob/main/examples/example-theory/metadata.json)
 
 ![Example theory: linear algebra](https://raw.githubusercontent.com/igoakulov/scenie/main/examples/screenshots/example-theory.png)
 
-### Homework: pendulum physics ([prompt](https://github.com/igoakulov/scenie/blob/main/examples/example-homework/metadata.json))
+2. Homework: pendulum physics - [see prompt](https://github.com/igoakulov/scenie/blob/main/examples/example-homework/metadata.json)
 
 ![Example homework: pendulum physics](https://raw.githubusercontent.com/igoakulov/scenie/main/examples/screenshots/example-homework.png)
 
-### Showcase: solar system ([prompt](https://github.com/igoakulov/scenie/blob/main/examples/example-showcase/metadata.json))
+3. Showcase: solar system - [see prompt](https://github.com/igoakulov/scenie/blob/main/examples/example-showcase/metadata.json)
 
 ![Example showcase: solar system](https://raw.githubusercontent.com/igoakulov/scenie/main/examples/screenshots/example-showcase.png)
 
@@ -84,14 +84,14 @@ scenie init          # or without link: node bin/scenie.js init
 
 ## Under the hood
 
-Agent skill (**250 lines**, **3K tokens**) + lightweight npm package (CLI + prebuilt viewer, **~0.5 MB**, **~6k LOC**). Requires Node ≥ 20.
+Agent skill (**<200 lines**) + lightweight npm package (CLI + prebuilt viewer, **<0.5 MB**, **~6k LOC**). Requires Node ≥ 20.
 
-- Portable scene folders: `metadata.json` + plain Three.js `scene.js` (+ optional assets); no proprietary geometry DSL
+- Portable scene folders: `metadata.json` + `scene.js` + optional `host.js` (+ optional assets); no proprietary geometry DSL
 - Local viewer: library, summary (markdown + KaTeX), Explore cards, orbit (3D) / pan-zoom (2D), grid, play/pause, in-scene annotations
-- Interactive params: numbers, booleans, selects, multiselect, strings, notes, computed labels; live remount on edit
+- Interactive params: numbers, booleans, selects, multiselect, strings, notes, computed labels
 - Agent skill: authoring contract, list → write → validate → show loop
 - CLI: `init`, `list`, `validate`, `show` over a config workspace; structured stdout for multi-surface context
-- Host-owned runtime: lights, helpers, camera, playback defaults with opt-outs; host frame loop with optional content hooks; validate before show
+- Host-provided: lights, helpers, camera, playback defaults with opt-outs; `scene.js` is a Three.js module (graph + optional `update`); `host.js` is flags/cards/canvas opt-out; validate before show
 
 **Stack**
 

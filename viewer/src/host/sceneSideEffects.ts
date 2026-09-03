@@ -1,16 +1,19 @@
 /**
- * Scene-lifetime DOM listener tracking (contract §9).
+ * Scene-lifetime DOM listener tracking.
  * While active, wraps addEventListener/removeEventListener on canvas, window, document.
- * On stop: removes every tracked listener and restores originals.
+ * `scene` bucket: dropped on graph remount. `input` bucket: dropped on scene switch.
  */
 
 type ListenerOptions = boolean | AddEventListenerOptions | undefined;
+
+type Bucket = "scene" | "input";
 
 type Tracked = {
   target: EventTarget;
   type: string;
   listener: EventListenerOrEventListenerObject;
   options: ListenerOptions;
+  bucket: Bucket;
 };
 
 type PatchedTarget = {
@@ -25,7 +28,6 @@ function optionsCapture(options: ListenerOptions): boolean {
   return false;
 }
 
-/** Same capture flag is required for removeEventListener to match. */
 function removalOptions(options: ListenerOptions): boolean | EventListenerOptions {
   if (typeof options === "boolean") return options;
   if (options && typeof options === "object") {
@@ -38,9 +40,14 @@ export class SceneSideEffects {
   private tracked: Tracked[] = [];
   private patched: PatchedTarget[] = [];
   private active = false;
+  private bucket: Bucket = "scene";
 
   get isActive(): boolean {
     return this.active;
+  }
+
+  setBucket(bucket: Bucket): void {
+    this.bucket = bucket;
   }
 
   start(canvas: EventTarget): void {
@@ -48,6 +55,7 @@ export class SceneSideEffects {
     this.active = true;
     this.tracked = [];
     this.patched = [];
+    this.bucket = "scene";
 
     const targets: EventTarget[] = [canvas, window, document];
     for (const target of targets) {
@@ -55,23 +63,29 @@ export class SceneSideEffects {
     }
   }
 
-  /** Remove all tracked listeners and unpatch. Safe if never started. */
-  stop(): void {
-    if (!this.active && this.patched.length === 0 && this.tracked.length === 0) {
-      return;
-    }
+  stopBucket(bucket: Bucket): void {
+    const drop = this.tracked.filter((t) => t.bucket === bucket);
+    this.tracked = this.tracked.filter((t) => t.bucket !== bucket);
+    this.removeAll(drop);
+    if (this.tracked.length === 0) this.unpatch();
+  }
 
-    // Unpatch first so removals use native removeEventListener.
-    const toRemove = this.tracked;
-    this.tracked = [];
+  stop(): void {
+    this.stopBucket("scene");
+    this.stopBucket("input");
+  }
+
+  private unpatch(): void {
     for (const p of this.patched) {
       p.target.addEventListener = p.add;
       p.target.removeEventListener = p.remove;
     }
     this.patched = [];
     this.active = false;
+  }
 
-    for (const entry of toRemove) {
+  private removeAll(entries: Tracked[]): void {
+    for (const entry of entries) {
       try {
         entry.target.removeEventListener(
           entry.type,
@@ -96,7 +110,13 @@ export class SceneSideEffects {
       options?: boolean | AddEventListenerOptions,
     ) => {
       if (listener != null) {
-        this.tracked.push({ target, type, listener, options });
+        this.tracked.push({
+          target,
+          type,
+          listener,
+          options,
+          bucket: this.bucket,
+        });
       }
       return add(type, listener as EventListenerOrEventListenerObject, options);
     };

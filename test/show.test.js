@@ -130,7 +130,7 @@ describe("show", () => {
                 `http://127.0.0.1:${port}/ws/scenes/demo/scene.js`,
               );
               assert.equal(sceneJs.status, 200);
-              assert.match(sceneJs.body, /export function setup/);
+              assert.match(sceneJs.body, /export \{ scene \}/);
 
               const catalog = await httpGet(
                 `http://127.0.0.1:${port}/api/scenes`,

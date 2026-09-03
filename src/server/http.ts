@@ -2,7 +2,8 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { access, readFile, stat } from "node:fs/promises";
 import http from "node:http";
 import { createRequire } from "node:module";
-import { dirname, extname, join, normalize, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, normalize, relative, resolve, sep } from "node:path";
+import { withParamsPreamble } from "../params-preamble.js";
 import { pipeline } from "node:stream/promises";
 import { listSceneEntries } from "../catalog.js";
 import { packageRoot } from "../examples.js";
@@ -50,11 +51,11 @@ const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  "connect-src 'self' https:",
   "worker-src 'self' blob:",
-  "media-src 'self' blob:",
+  "media-src 'self' blob: https:",
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
@@ -241,6 +242,26 @@ async function handleRequest(
       const scenesRoot = join(roots.workspace, "scenes");
       if (!isInside(scenesRoot, filePath) && filePath !== scenesRoot) {
         sendText(res, 403, "forbidden");
+        return;
+      }
+      if (basename(filePath) === "scene.js" && u.searchParams.get("p") === "1") {
+        let raw: string;
+        try {
+          raw = await readFile(filePath, "utf8");
+        } catch {
+          sendText(res, 404, "not found");
+          return;
+        }
+        const body = withParamsPreamble(raw);
+        setCommonHeaders(res);
+        res.statusCode = 200;
+        res.setHeader("Content-Type", contentType(filePath));
+        res.setHeader("Content-Length", String(Buffer.byteLength(body)));
+        if (req.method === "HEAD") {
+          res.end();
+          return;
+        }
+        res.end(body);
         return;
       }
       if (req.method === "HEAD") {

@@ -1,4 +1,4 @@
-import type { SceneDimensions, SceneMetadata, ValidationIssue } from "../types.js";
+import type { SceneMetadata, ValidationIssue } from "../types.js";
 
 export function parseMetadata(
   raw: unknown,
@@ -32,15 +32,6 @@ export function parseMetadata(
     });
   }
 
-  let dimensions: SceneDimensions = 3;
-  if (obj.dimensions !== undefined) {
-    if (obj.dimensions !== 2 && obj.dimensions !== 3) {
-      issues.push({ path: `${p}.dimensions`, message: "want 2 or 3" });
-    } else {
-      dimensions = obj.dimensions;
-    }
-  }
-
   if (obj.attribution !== undefined) {
     if (
       obj.attribution === null ||
@@ -54,11 +45,10 @@ export function parseMetadata(
   if (issues.length > 0) return { issues };
 
   const metadata: SceneMetadata = {
-    ...(obj as Omit<SceneMetadata, "dimensions">),
+    ...(obj as SceneMetadata),
     title: obj.title as string,
     description: obj.description as string,
     tags: obj.tags as string[],
-    dimensions,
   };
   return { metadata, issues: [] };
 }

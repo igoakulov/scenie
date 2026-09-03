@@ -1,6 +1,6 @@
 {
   "title": "Example homework: pendulum physics",
-  "description": "Simple pendulum of length $L$, mass $m$, released from rest at angle $\\theta_0$ from the vertical. Defaults match a textbook problem: $L=0.80\\,\\mathrm{m}$, $m=0.25\\,\\mathrm{kg}$, $\\theta_0=30^\\circ$, $g=9.8\\,\\mathrm{m/s^2}$.\n\nPress **Play** to watch the swing. The purple height mark is the drop $h=L(1-\\cos\\theta_0)$ from release to the bottom \u2014 the PE that becomes KE.\n\n**Energy.** Conservation from rest to the lowest point:\n$$mgh = \\tfrac12 mv^2 \\quad\\Rightarrow\\quad v = \\sqrt{2gL(1-\\cos\\theta_0)}.$$\n\n**Tension.** At the bottom the path is circular, so\n$$T - mg = \\frac{mv^2}{L} \\quad\\Rightarrow\\quad T = m\\Bigl(g + \\frac{v^2}{L}\\Bigr).$$\n\nToggle height, energy board, force arrows, and trail; scrub $L$, $m$, $\\theta_0$, and $g$ to see $h$, $v$, and $T$ update.",
+  "description": "Mechanical energy and Newton's second law for a simple pendulum released from rest ($L=0.80\\,\\mathrm{m}$, $m=0.25\\,\\mathrm{kg}$, $\\theta_0=30^\\circ$ from the vertical, $g=9.8\\,\\mathrm{m/s}^2$). The scene is a face-on swing: play it, or freeze **at release** / **at bottom**. Overlays mark the arc, the drop $h$, live $\\vec v$, the two real forces $T$ and $mg$, and the split of $E$ into $U$ and $K$. The string is massless and inextensible; air resistance is neglected.\n\n**Speed from energy.** Take $U=0$ at the lowest point. At angle $\\theta$ from the vertical the bob sits a height $h=L(1-\\cos\\theta)$ above that point. Released from rest, $K_i=0$ and $U_i=mgL(1-\\cos\\theta_0)$. At the bottom $U_f=0$, so $mgL(1-\\cos\\theta_0)=\\tfrac12 mv^2$ and $v=\\sqrt{2gL(1-\\cos\\theta_0)}$. Tension never enters this budget: the displacement is always tangent to the arc, while $T$ is radial, so $T\\cdot\\vec v=0$ at every instant. An inextensible string does no work; gravity is conservative; with no drag, $E=K+U$ is constant. Energy therefore fixes the *speed* but says nothing about how hard the string pulls.\n\n**Tension from radial Newton II.** $T$ is a constraint force. It does no work, so it is invisible to energy; you need $\\sum F_r=ma_r$ along the string. With the radial direction toward the pivot, $T-mg\\cos\\theta=mv^2/L$. At the bottom $\\theta=0$, both $T$ and the extra $mv^2/L$ point up, and $T=mg+mv^2/L=mg(3-2\\cos\\theta_0)$.\n\n**Numbers.** $h=0.80(1-\\sqrt{3}/2)=0.107\\,\\mathrm{m}$. Then $v=\\sqrt{2\\cdot 9.8\\cdot 0.107}=1.449\\,\\mathrm{m/s}$. Weight is $mg=2.45\\,\\mathrm{N}$; the centripetal extra is $mv^2/L=0.656\\,\\mathrm{N}$; $T=3.106\\,\\mathrm{N}$.",
   "tags": [
     "example",
     "homework",
@@ -9,10 +9,9 @@
     "education",
     "energy"
   ],
-  "dimensions": 2,
   "attribution": {
     "author": "igoakulov",
-    "model": "grok-4.5-high",
-    "prompt": "My physics textbook is showing just a drawing for this. Use the Scenie skill to show me how it moves and help me solve this problem?\n\nA simple pendulum of length L = 0.80 m is suspended from a fixed support. The bob has mass m = 0.25 kg. At rest the pendulum hangs vertically. The bob is then pulled aside so the string makes an angle \u03b8\u2080 = 30\u00b0 with the vertical and is released from rest.\n\n1. Using conservation of energy, find the speed of the bob at the bottom of the swing.\n\n2. Find the tension in the string at the bottom of the swing.\n\nAssume g = 9.8 m/s\u00b2. Neglect air resistance. The string is massless and inextensible."
+    "model": "grok-4.6-high",
+    "prompt": "My physics textbook is showing just a drawing for this. Show me how it moves and help me solve this problem?\n\nA simple pendulum of length L = 0.80 m is suspended from a fixed support. The bob has mass m = 0.25 kg. At rest the pendulum hangs vertically. The bob is then pulled aside so the string makes an angle θ₀ = 30° with the vertical and is released from rest.\n\n1. Using conservation of energy, find the speed of the bob at the bottom of the swing.\n\n2. Find the tension in the string at the bottom of the swing.\n\nAssume g = 9.8 m/s². Neglect air resistance. The string is massless and inextensible."
   }
 }

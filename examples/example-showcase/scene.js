@@ -1,1220 +1,1161 @@
 import * as THREE from "three";
+import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
-export const runtime = {
-  lights: false,
-  helpers: false,
-  camera: false,
-  playback: true,
-};
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x010105);
 
-// ─── module state (survives remount; input + fly rig) ───────────────────────
-const fly = {
-  yaw: 0.35,
-  pitch: -0.12,
-  vel: new THREE.Vector3(),
-  keys: Object.create(null),
-  pointerLocked: false,
-  inited: false,
-  bound: false,
-  listeners: null,
-  tmpF: new THREE.Vector3(),
-  tmpR: new THREE.Vector3(),
-  tmpU: new THREE.Vector3(),
-  euler: new THREE.Euler(0, 0, 0, "YXZ"),
-  bodies: null,
-  trails: null,
-  belt: null,
-  stars: null,
-  sunCore: null,
-  sunGlow: null,
-  sunCorona: null,
-  sunLight: null,
-  labelNodes: [],
-  orbitLines: [],
-};
+const layers = new Set(params.layers ?? ["orbits", "labels", "moons", "asteroids", "atmospheres", "comet", "kuiper"]);
+const detail = params.detail ?? "high";
+const planetScale = (params.planet_scale ?? 1) * 0.5;
+const sunGlow = params.sun_glow ?? 1.1;
+const elliptical = params.elliptical !== false;
+const show = (k) => layers.has(k);
 
-const PLANETS = [
-  {
-    id: "mercury",
-    name: "Mercury",
-    color: 0xb5b5b5,
-    emissive: 0x222222,
-    r: 0.38,
-    dist: 12,
-    period: 0.24,
-    spin: 0.02,
-    tilt: 0.03,
-    segs: 48,
-    metalness: 0.55,
-    roughness: 0.45,
-  },
-  {
-    id: "venus",
-    name: "Venus",
-    color: 0xe8c87a,
-    emissive: 0x3a2a08,
-    r: 0.72,
-    dist: 18,
-    period: 0.62,
-    spin: -0.008,
-    tilt: 3.1,
-    segs: 56,
-    metalness: 0.15,
-    roughness: 0.55,
-    atmosphere: 0xffcc66,
-  },
-  {
-    id: "earth",
-    name: "Earth",
-    color: 0x2a6fd6,
-    emissive: 0x061830,
-    r: 0.78,
-    dist: 26,
-    period: 1,
-    spin: 0.06,
-    tilt: 0.41,
-    segs: 64,
-    metalness: 0.2,
-    roughness: 0.45,
-    atmosphere: 0x66b3ff,
-    land: 0x2d8a4e,
-  },
-  {
-    id: "mars",
-    name: "Mars",
-    color: 0xc1440e,
-    emissive: 0x2a0c04,
-    r: 0.52,
-    dist: 36,
-    period: 1.88,
-    spin: 0.055,
-    tilt: 0.44,
-    segs: 48,
-    metalness: 0.25,
-    roughness: 0.7,
-  },
-  {
-    id: "jupiter",
-    name: "Jupiter",
-    color: 0xd4a574,
-    emissive: 0x2a1810,
-    r: 3.2,
-    dist: 58,
-    period: 11.86,
-    spin: 0.14,
-    tilt: 0.05,
-    segs: 72,
-    metalness: 0.1,
-    roughness: 0.55,
-    bands: true,
-  },
-  {
-    id: "saturn",
-    name: "Saturn",
-    color: 0xe8d4a0,
-    emissive: 0x2a2410,
-    r: 2.7,
-    dist: 82,
-    period: 29.46,
-    spin: 0.12,
-    tilt: 0.47,
-    segs: 72,
-    metalness: 0.12,
-    roughness: 0.5,
-    rings: true,
-  },
-  {
-    id: "uranus",
-    name: "Uranus",
-    color: 0x7de8e8,
-    emissive: 0x0a3030,
-    r: 1.5,
-    dist: 108,
-    period: 84.0,
-    spin: 0.09,
-    tilt: 1.71,
-    segs: 56,
-    metalness: 0.2,
-    roughness: 0.35,
-    atmosphere: 0xaaffff,
-  },
-  {
-    id: "neptune",
-    name: "Neptune",
-    color: 0x3b5bdb,
-    emissive: 0x081838,
-    r: 1.45,
-    dist: 132,
-    period: 164.8,
-    spin: 0.1,
-    tilt: 0.49,
-    segs: 56,
-    metalness: 0.22,
-    roughness: 0.4,
-    atmosphere: 0x4488ff,
-  },
-];
+const SEG = detail === "high" ? 72 : detail === "medium" ? 44 : 28;
+const SEG_SMALL = detail === "high" ? 28 : 18;
+const STAR_N = detail === "high" ? 7000 : detail === "medium" ? 3800 : 1600;
+const AST_N = detail === "high" ? 420 : detail === "medium" ? 220 : 90;
+const KUIPER_N = detail === "high" ? 260 : detail === "medium" ? 120 : 40;
+const WIND_N = detail === "high" ? 280 : 140;
 
-const MOON = {
-  id: "moon",
-  name: "Moon",
-  color: 0xc8c4b8,
-  emissive: 0x1a1a18,
-  r: 0.22,
-  dist: 2.1,
-  period: 0.0748,
-  spin: 0.01,
-  segs: 32,
-  metalness: 0.15,
-  roughness: 0.85,
-};
-
-// ─── params ─────────────────────────────────────────────────────────────────
-export function params() {
-  return [
-    {
-      type: "card",
-      title: "Flight",
-      children: [
-        {
-          type: "note",
-          text: "Click the canvas for mouse-look. W/A/S/D thrust · Space up · Ctrl down · Shift boost · C reset near Earth. Orbits pause with host Play/Pause; flight always runs.",
-        },
-        {
-          key: "fly_speed",
-          type: "number",
-          label: "Cruise speed",
-          min: 2,
-          max: 80,
-          step: 1,
-          default: 18,
-          unit: "u/s",
-        },
-        {
-          key: "boost_mult",
-          type: "number",
-          label: "Boost multiplier",
-          min: 1.5,
-          max: 8,
-          step: 0.1,
-          default: 3.5,
-        },
-        {
-          key: "look_sens",
-          type: "number",
-          label: "Look sensitivity",
-          min: 0.0005,
-          max: 0.01,
-          step: 0.0005,
-          default: 0.0022,
-        },
-        {
-          key: "drag",
-          type: "number",
-          label: "Velocity drag",
-          min: 0.85,
-          max: 0.995,
-          step: 0.005,
-          default: 0.94,
-        },
-      ],
-    },
-    {
-      type: "card",
-      title: "Simulation",
-      children: [
-        {
-          key: "time_scale",
-          type: "number",
-          label: "Orbit time scale",
-          min: 0.1,
-          max: 8,
-          step: 0.1,
-          default: 1,
-          unit: "×",
-        },
-        {
-          key: "eccentricity",
-          type: "number",
-          label: "Orbit eccentricity",
-          min: 0,
-          max: 0.35,
-          step: 0.01,
-          default: 0.04,
-        },
-        {
-          key: "show_orbits",
-          type: "boolean",
-          label: "Orbit trails",
-          default: true,
-        },
-        {
-          key: "show_labels",
-          type: "boolean",
-          label: "Body labels",
-          default: true,
-        },
-        {
-          key: "show_belt",
-          type: "boolean",
-          label: "Asteroid belt",
-          default: true,
-        },
-        {
-          key: "show_stars",
-          type: "boolean",
-          label: "Starfield",
-          default: true,
-        },
-      ],
-    },
-    {
-      type: "card",
-      title: "Visuals",
-      children: [
-        {
-          key: "sun_power",
-          type: "number",
-          label: "Sun light power",
-          min: 20,
-          max: 400,
-          step: 5,
-          default: 140,
-        },
-        {
-          key: "sun_size",
-          type: "number",
-          label: "Sun radius",
-          min: 2,
-          max: 10,
-          step: 0.25,
-          default: 6,
-          unit: "u",
-        },
-        {
-          key: "glow",
-          type: "number",
-          label: "Corona intensity",
-          min: 0.2,
-          max: 2.5,
-          step: 0.05,
-          default: 1,
-        },
-        {
-          key: "planet_scale",
-          type: "number",
-          label: "Planet size scale",
-          min: 0.4,
-          max: 2.5,
-          step: 0.05,
-          default: 1,
-        },
-        {
-          key: "star_count",
-          type: "number",
-          label: "Star count",
-          min: 1000,
-          max: 16000,
-          step: 500,
-          default: 10000,
-        },
-        {
-          key: "belt_count",
-          type: "number",
-          label: "Asteroid count",
-          min: 200,
-          max: 4000,
-          step: 100,
-          default: 2000,
-        },
-        {
-          key: "quality",
-          type: "select",
-          label: "Mesh quality",
-          options: ["draft", "high", "ultra"],
-          default: "high",
-        },
-      ],
-    },
-    {
-      type: "card",
-      title: "Bodies",
-      children: [
-        {
-          key: "visible_bodies",
-          type: "multiselect",
-          label: "Show",
-          options: [
-            "mercury",
-            "venus",
-            "earth",
-            "mars",
-            "jupiter",
-            "saturn",
-            "uranus",
-            "neptune",
-            "moon",
-          ],
-          default: [
-            "mercury",
-            "venus",
-            "earth",
-            "mars",
-            "jupiter",
-            "saturn",
-            "uranus",
-            "neptune",
-            "moon",
-          ],
-        },
-        {
-          type: "label",
-          label: "System span",
-          value: () => "~264 u diameter (Neptune orbit)",
-        },
-      ],
-    },
-  ];
-}
-
-export function onParamsChange(params) {
-  return params;
-}
-
-export function validateParams(params) {
-  const issues = [];
-  if ((params.fly_speed ?? 0) < 1) {
-    issues.push({ key: "fly_speed", message: "cruise speed should be ≥ 1" });
+const geoCache = new Map();
+function unitSphere(seg) {
+  let g = geoCache.get(seg);
+  if (!g) {
+    g = new THREE.SphereGeometry(1, seg, Math.max(12, (seg * 0.55) | 0));
+    geoCache.set(seg, g);
   }
-  return issues;
+  return g;
 }
 
-// ─── helpers ────────────────────────────────────────────────────────────────
-function segMul(quality) {
-  if (quality === "ultra") return 1.5;
-  if (quality === "draft") return 0.55;
-  return 1;
+function h3(x, y, z) {
+  const n = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453123;
+  return n - Math.floor(n);
 }
-
-function seeded(i, salt = 0) {
-  const x = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453;
-  return x - Math.floor(x);
+function n3(x, y, z) {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const iz = Math.floor(z);
+  const fx = x - ix;
+  const fy = y - iy;
+  const fz = z - iz;
+  const ux = fx * fx * (3 - 2 * fx);
+  const uy = fy * fy * (3 - 2 * fy);
+  const uz = fz * fz * (3 - 2 * fz);
+  const n000 = h3(ix, iy, iz);
+  const n100 = h3(ix + 1, iy, iz);
+  const n010 = h3(ix, iy + 1, iz);
+  const n110 = h3(ix + 1, iy + 1, iz);
+  const n001 = h3(ix, iy, iz + 1);
+  const n101 = h3(ix + 1, iy, iz + 1);
+  const n011 = h3(ix, iy + 1, iz + 1);
+  const n111 = h3(ix + 1, iy + 1, iz + 1);
+  const x00 = n000 + (n100 - n000) * ux;
+  const x10 = n010 + (n110 - n010) * ux;
+  const x01 = n001 + (n101 - n001) * ux;
+  const x11 = n011 + (n111 - n011) * ux;
+  const y0 = x00 + (x10 - x00) * uy;
+  const y1 = x01 + (x11 - x01) * uy;
+  return y0 + (y1 - y0) * uz;
 }
-
-function makeStarfield(count, radius) {
-  const pos = new Float32Array(count * 3);
-  const col = new Float32Array(count * 3);
-  const sizes = new Float32Array(count);
-  for (let i = 0; i < count; i++) {
-    const u = seeded(i, 1);
-    const v = seeded(i, 2);
-    const theta = 2 * Math.PI * u;
-    const phi = Math.acos(2 * v - 1);
-    const r = radius * (0.55 + 0.45 * seeded(i, 3));
-    const x = r * Math.sin(phi) * Math.cos(theta);
-    const y = r * Math.sin(phi) * Math.sin(theta);
-    const z = r * Math.cos(phi);
-    pos[i * 3] = x;
-    pos[i * 3 + 1] = y;
-    pos[i * 3 + 2] = z;
-    const tint = seeded(i, 4);
-    const b = 0.65 + 0.35 * seeded(i, 5);
-    if (tint < 0.12) {
-      col[i * 3] = 0.65 * b;
-      col[i * 3 + 1] = 0.78 * b;
-      col[i * 3 + 2] = 1.0 * b;
-    } else if (tint < 0.22) {
-      col[i * 3] = 1.0 * b;
-      col[i * 3 + 1] = 0.72 * b;
-      col[i * 3 + 2] = 0.45 * b;
-    } else {
-      col[i * 3] = b;
-      col[i * 3 + 1] = b;
-      col[i * 3 + 2] = b * (0.92 + 0.08 * seeded(i, 6));
-    }
-    sizes[i] = 0.6 + 2.4 * Math.pow(seeded(i, 7), 3);
+function fbm(x, y, z, oct = 5) {
+  let v = 0;
+  let a = 0.5;
+  for (let i = 0; i < oct; i++) {
+    v += a * n3(x, y, z);
+    x *= 2.03;
+    y *= 2.03;
+    z *= 2.03;
+    a *= 0.5;
   }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
-  geo.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
-  const mat = new THREE.PointsMaterial({
-    size: 0.55,
-    sizeAttenuation: true,
-    vertexColors: true,
-    transparent: true,
-    opacity: 0.95,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
-  const pts = new THREE.Points(geo, mat);
-  pts.name = "starfield";
-  pts.frustumCulled = false;
-  return pts;
+  return v;
+}
+function dirFromUv(u, v) {
+  const th = u * Math.PI * 2;
+  const ph = v * Math.PI;
+  const s = Math.sin(ph);
+  return [s * Math.cos(th), Math.cos(ph), s * Math.sin(th)];
+}
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+function clamp01(x) {
+  return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
-function makeOrbitLine(a, e, color, segments = 180) {
-  const pts = [];
-  for (let i = 0; i <= segments; i++) {
-    const th = (i / segments) * Math.PI * 2;
-    const r = (a * (1 - e * e)) / (1 + e * Math.cos(th));
-    pts.push(new THREE.Vector3(Math.cos(th) * r, 0, Math.sin(th) * r));
-  }
-  const geo = new THREE.BufferGeometry().setFromPoints(pts);
-  const mat = new THREE.LineBasicMaterial({
-    color,
-    transparent: true,
-    opacity: 0.28,
-    depthWrite: false,
-  });
-  const line = new THREE.Line(geo, mat);
-  line.name = "orbit";
-  return line;
-}
-
-function bandTexture(baseHex, seed = 1) {
-  const w = 256;
-  const h = 128;
+function canvasTex(w, h, paint, opts = {}) {
   const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
-  const ctx = c.getContext("2d");
-  const base = new THREE.Color(baseHex);
-  ctx.fillStyle = `#${base.getHexString()}`;
-  ctx.fillRect(0, 0, w, h);
-  for (let y = 0; y < h; y++) {
-    const n =
-      0.5 +
-      0.5 *
-        Math.sin(y * 0.18 + seed) *
-        Math.sin(y * 0.07 + seed * 2.1) *
-        Math.sin(y * 0.41);
-    const shade = 0.55 + 0.55 * n;
-    const col = base.clone().multiplyScalar(shade);
-    if (seed % 2 === 1 && y % 17 < 3) col.offsetHSL(0.02, 0.1, 0.08);
-    ctx.fillStyle = `rgb(${(col.r * 255) | 0},${(col.g * 255) | 0},${(col.b * 255) | 0})`;
-    ctx.fillRect(0, y, w, 1);
-  }
-  // swirls
-  for (let i = 0; i < 40; i++) {
-    const x = seeded(i, seed + 20) * w;
-    const y = seeded(i, seed + 30) * h;
-    const rw = 8 + seeded(i, seed + 40) * 40;
-    const rh = 2 + seeded(i, seed + 50) * 8;
-    ctx.fillStyle = `rgba(255,220,180,${0.04 + 0.08 * seeded(i, seed + 60)})`;
-    ctx.beginPath();
-    ctx.ellipse(x, y, rw, rh, seeded(i, seed + 70) * 0.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-  return tex;
-}
-
-function earthTexture() {
-  const w = 512;
-  const h = 256;
-  const c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = "#1a4fa8";
-  ctx.fillRect(0, 0, w, h);
-  // continents — noise blobs
-  for (let i = 0; i < 180; i++) {
-    const x = seeded(i, 100) * w;
-    const y = 20 + seeded(i, 101) * (h - 40);
-    const rw = 12 + seeded(i, 102) * 55;
-    const rh = 8 + seeded(i, 103) * 30;
-    const g = 40 + ((seeded(i, 104) * 90) | 0);
-    const r = 20 + ((seeded(i, 105) * 50) | 0);
-    ctx.fillStyle = `rgb(${r},${g},${30 + ((seeded(i, 106) * 40) | 0)})`;
-    ctx.beginPath();
-    ctx.ellipse(x, y, rw, rh, seeded(i, 107) * Math.PI, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // ice caps
-  const gradN = ctx.createLinearGradient(0, 0, 0, 28);
-  gradN.addColorStop(0, "rgba(240,248,255,0.95)");
-  gradN.addColorStop(1, "rgba(240,248,255,0)");
-  ctx.fillStyle = gradN;
-  ctx.fillRect(0, 0, w, 28);
-  const gradS = ctx.createLinearGradient(0, h, 0, h - 28);
-  gradS.addColorStop(0, "rgba(240,248,255,0.95)");
-  gradS.addColorStop(1, "rgba(240,248,255,0)");
-  ctx.fillStyle = gradS;
-  ctx.fillRect(0, h - 28, w, 28);
-  // clouds hints
-  for (let i = 0; i < 60; i++) {
-    ctx.fillStyle = `rgba(255,255,255,${0.05 + 0.08 * seeded(i, 200)})`;
-    ctx.beginPath();
-    ctx.ellipse(
-      seeded(i, 201) * w,
-      seeded(i, 202) * h,
-      10 + seeded(i, 203) * 40,
-      3 + seeded(i, 204) * 8,
-      0,
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-function sunTexture() {
-  const w = 256;
-  const h = 256;
-  const c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
-  const ctx = c.getContext("2d");
+  const ctx = c.getContext("2d", { willReadFrequently: true });
   const img = ctx.createImageData(w, h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
-      const n =
-        0.55 +
-        0.25 * Math.sin(x * 0.12 + y * 0.07) +
-        0.2 * Math.sin(x * 0.31 - y * 0.19) +
-        0.15 * Math.sin((x + y) * 0.08);
-      const flare = Math.pow(Math.max(0, n), 1.4);
-      img.data[i] = Math.min(255, 220 + flare * 35);
-      img.data[i + 1] = Math.min(255, 120 + flare * 90);
-      img.data[i + 2] = Math.min(255, 20 + flare * 40);
-      img.data[i + 3] = 255;
-    }
-  }
+  paint(img.data, w, h);
   ctx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  tex.wrapS = opts.wrapS ?? THREE.RepeatWrapping;
+  tex.wrapT = opts.wrapT ?? THREE.ClampToEdgeWrapping;
+  tex.needsUpdate = true;
   return tex;
 }
 
-function makeAsteroidBelt(count, inner, outer) {
-  const geo = new THREE.IcosahedronGeometry(1, 0);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x8a7a68,
-    roughness: 0.92,
-    metalness: 0.15,
-    flatShading: true,
+function paintPlanet(w, h, shade) {
+  return canvasTex(w, h, (d, W, H) => {
+    for (let y = 0; y < H; y++) {
+      const v = y / (H - 1);
+      for (let x = 0; x < W; x++) {
+        const u = x / W;
+        const p = dirFromUv(u, v);
+        const col = shade(p[0], p[1], p[2], u, v);
+        const i = (y * W + x) << 2;
+        d[i] = col[0];
+        d[i + 1] = col[1];
+        d[i + 2] = col[2];
+        d[i + 3] = col[3] ?? 255;
+      }
+    }
   });
-  const mesh = new THREE.InstancedMesh(geo, mat, count);
-  mesh.name = "asteroid-belt";
-  const dummy = new THREE.Object3D();
-  const data = new Float32Array(count * 4); // a, phase, y, spin
-  for (let i = 0; i < count; i++) {
-    const a = inner + seeded(i, 1) * (outer - inner);
-    const phase = seeded(i, 2) * Math.PI * 2;
-    const y = (seeded(i, 3) - 0.5) * 2.2;
-    const s = 0.04 + seeded(i, 4) * 0.18;
-    const e = 0.02 + seeded(i, 5) * 0.08;
-    const r = (a * (1 - e * e)) / (1 + e * Math.cos(phase));
-    dummy.position.set(Math.cos(phase) * r, y, Math.sin(phase) * r);
-    dummy.rotation.set(
-      seeded(i, 6) * Math.PI,
-      seeded(i, 7) * Math.PI,
-      seeded(i, 8) * Math.PI
-    );
-    dummy.scale.setScalar(s);
-    dummy.updateMatrix();
-    mesh.setMatrixAt(i, dummy.matrix);
-    data[i * 4] = a;
-    data[i * 4 + 1] = phase;
-    data[i * 4 + 2] = y;
-    data[i * 4 + 3] = 0.2 + seeded(i, 9) * 1.5;
+}
+
+function rockShade(seed, pal, crater = 1) {
+  return (x, y, z) => {
+    const n = fbm(x * 3.2 + seed, y * 3.2, z * 3.2, 5);
+    const n2 = fbm(x * 8 + seed * 2, y * 8, z * 8, 3);
+    let cr = 0;
+    if (crater) {
+      const c = n3(x * 6 + 9, y * 6, z * 6 + seed);
+      cr = Math.pow(clamp01(0.55 - Math.abs(c - 0.42) * 3.2), 2) * crater;
+    }
+    const t = clamp01(n * 0.75 + n2 * 0.25 - cr * 0.35);
+    const ice = clamp01((Math.abs(y) - 0.82) * 5);
+    return [
+      lerp(pal[0], pal[3], t) + ice * 40,
+      lerp(pal[1], pal[4], t) + ice * 40,
+      lerp(pal[2], pal[5], t) + ice * 45,
+    ];
+  };
+}
+
+function bandShade(seed, bands, spot) {
+  return (x, y, z, u, v) => {
+    const warp = (fbm(x * 2.2 + seed, y * 6, z * 2.2, 4) - 0.5) * 0.18;
+    const yy = clamp01(v + warp);
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let wsum = 0;
+    for (let i = 0; i < bands.length; i++) {
+      const bd = bands[i];
+      const k = Math.exp(-Math.pow((yy - bd.y) / bd.w, 2));
+      r += bd.c[0] * k;
+      g += bd.c[1] * k;
+      b += bd.c[2] * k;
+      wsum += k;
+    }
+    const inv = 1 / Math.max(1e-5, wsum);
+    r *= inv;
+    g *= inv;
+    b *= inv;
+    const turb = fbm(x * 5 + seed, y * 14, z * 5, 4);
+    r = clamp01(r + (turb - 0.5) * 0.14) * 255;
+    g = clamp01(g + (turb - 0.5) * 0.1) * 255;
+    b = clamp01(b + (turb - 0.5) * 0.06) * 255;
+    if (spot) {
+      const dx = x - spot.x;
+      const dy = y - spot.y;
+      const dz = z - spot.z;
+      const s = Math.exp(-(dx * dx * 18 + dy * dy * 70 + dz * dz * 18) * spot.k);
+      r = lerp(r, spot.c[0], s);
+      g = lerp(g, spot.c[1], s);
+      b = lerp(b, spot.c[2], s);
+    }
+    return [r, g, b];
+  };
+}
+
+const maps = {
+  mercury: paintPlanet(768, 384, rockShade(1.2, [92, 82, 74, 180, 168, 150], 1.3)),
+  venus: paintPlanet(768, 384, (x, y, z) => {
+    const n = fbm(x * 2.4, y * 3.1, z * 2.4, 5);
+    const swirl = fbm(x * 1.4 + n, y * 6, z * 1.4, 4);
+    const t = clamp01(n * 0.55 + swirl * 0.5);
+    return [lerp(210, 255, t), lerp(150, 210, t), lerp(70, 120, t)];
+  }),
+  earth: paintPlanet(1024, 512, (x, y, z) => {
+    const n = fbm(x * 2.6 + 4, y * 2.6, z * 2.6, 6);
+    const n2 = fbm(x * 6, y * 6, z * 6, 3);
+    const land = n > 0.5;
+    const mtn = land && n2 > 0.62;
+    const ice = Math.abs(y) > 0.78 + n * 0.08 || (Math.abs(y) > 0.62 && n > 0.58);
+    if (ice) return [236, 244, 255];
+    if (mtn) return [118, 108, 88];
+    if (land) {
+      const veg = clamp01((n - 0.5) * 3);
+      return [lerp(62, 40, veg) + 40, lerp(110, 150, veg), lerp(48, 55, veg)];
+    }
+    const deep = clamp01((0.5 - n) * 2);
+    return [lerp(40, 8, deep), lerp(90, 28, deep), lerp(160, 90, deep)];
+  }),
+  earthNight: paintPlanet(1024, 512, (x, y, z) => {
+    const n = fbm(x * 2.6 + 4, y * 2.6, z * 2.6, 6);
+    const land = n > 0.5 && Math.abs(y) < 0.74;
+    const city = h3(Math.floor(x * 80), Math.floor(y * 80), Math.floor(z * 80));
+    const cluster = fbm(x * 14, y * 14, z * 14, 2);
+    if (land && city > 0.78 && cluster > 0.48) {
+      const a = (city - 0.78) * 8;
+      return [255 * a, 200 * a, 90 * a];
+    }
+    return [0, 0, 0];
+  }),
+  earthCloud: paintPlanet(1024, 512, (x, y, z) => {
+    const n = fbm(x * 3.2 + 11, y * 2.2, z * 3.2, 5);
+    const bands = Math.pow(clamp01(n - 0.48), 1.2);
+    const a = bands * 220;
+    return [235, 240, 255, a];
+  }),
+  mars: paintPlanet(768, 384, (x, y, z) => {
+    const n = fbm(x * 3 + 2, y * 3, z * 3, 5);
+    const dust = fbm(x * 7, y * 7, z * 7, 3);
+    const ice = clamp01((Math.abs(y) - 0.72) * 6);
+    const t = clamp01(n * 0.7 + dust * 0.3);
+    return [
+      lerp(110, 200, t) + ice * 50,
+      lerp(40, 90, t) + ice * 60,
+      lerp(22, 48, t) + ice * 70,
+    ];
+  }),
+  jupiter: paintPlanet(1024, 512, bandShade(
+    3.1,
+    [
+      { y: 0.08, w: 0.08, c: [0.55, 0.38, 0.22] },
+      { y: 0.2, w: 0.07, c: [0.85, 0.72, 0.52] },
+      { y: 0.35, w: 0.09, c: [0.72, 0.55, 0.38] },
+      { y: 0.5, w: 0.1, c: [0.9, 0.82, 0.68] },
+      { y: 0.65, w: 0.08, c: [0.62, 0.42, 0.28] },
+      { y: 0.8, w: 0.09, c: [0.82, 0.7, 0.5] },
+      { y: 0.93, w: 0.07, c: [0.7, 0.62, 0.55] },
+    ],
+    { x: 0.55, y: 0.18, z: 0.2, k: 1, c: [180, 70, 45] }
+  )),
+  saturn: paintPlanet(768, 384, bandShade(6.4, [
+    { y: 0.12, w: 0.1, c: [0.78, 0.7, 0.5] },
+    { y: 0.3, w: 0.09, c: [0.9, 0.82, 0.62] },
+    { y: 0.5, w: 0.12, c: [0.85, 0.76, 0.55] },
+    { y: 0.7, w: 0.1, c: [0.72, 0.64, 0.46] },
+    { y: 0.88, w: 0.09, c: [0.8, 0.74, 0.58] },
+  ])),
+  uranus: paintPlanet(640, 320, (x, y, z) => {
+    const n = fbm(x * 2, y * 5, z * 2, 4);
+    const t = clamp01(0.45 + n * 0.3 + Math.abs(y) * 0.1);
+    return [lerp(130, 190, t), lerp(210, 240, t), lerp(210, 230, t)];
+  }),
+  neptune: paintPlanet(640, 320, (x, y, z) => {
+    const n = fbm(x * 2.4, y * 6, z * 2.4, 4);
+    const spot = Math.exp(-(x + 0.4) * (x + 0.4) * 10 - (y - 0.2) * (y - 0.2) * 40);
+    const t = clamp01(0.35 + n * 0.4);
+    return [lerp(25, 70, t) + spot * 20, lerp(70, 130, t), lerp(170, 230, t) + spot * 10];
+  }),
+  pluto: paintPlanet(512, 256, (x, y, z) => {
+    const n = fbm(x * 4 + 8, y * 4, z * 4, 5);
+    const heart = Math.exp(-((x - 0.25) * (x - 0.25) * 8 + (y - 0.15) * (y - 0.15) * 14 + z * z * 6));
+    const t = clamp01(n);
+    return [
+      lerp(90, 160, t) + heart * 80,
+      lerp(80, 140, t) + heart * 70,
+      lerp(75, 130, t) + heart * 60,
+    ];
+  }),
+  moon: paintPlanet(512, 256, rockShade(9.1, [70, 70, 72, 190, 188, 180], 1.6)),
+  io: paintPlanet(384, 192, (x, y, z) => {
+    const n = fbm(x * 5, y * 5, z * 5, 4);
+    const t = clamp01(n);
+    return [lerp(200, 255, t), lerp(170, 90, t), lerp(40, 30, t)];
+  }),
+  europa: paintPlanet(384, 192, (x, y, z) => {
+    const n = fbm(x * 8, y * 3, z * 8, 4);
+    const crack = Math.pow(Math.abs(n - 0.5) * 2, 0.4);
+    return [lerp(180, 230, crack), lerp(200, 240, crack), lerp(210, 245, crack)];
+  }),
+  ganymede: paintPlanet(384, 192, rockShade(4.4, [80, 74, 68, 170, 160, 145], 0.8)),
+  callisto: paintPlanet(384, 192, rockShade(5.5, [50, 48, 46, 130, 120, 110], 1.4)),
+  titan: paintPlanet(384, 192, (x, y, z) => {
+    const n = fbm(x * 3, y * 3, z * 3, 4);
+    const t = clamp01(n);
+    return [lerp(160, 210, t), lerp(100, 140, t), lerp(40, 70, t)];
+  }),
+  charon: paintPlanet(256, 128, rockShade(7.7, [88, 82, 90, 160, 150, 155], 1)),
+};
+
+function ringTex(kind) {
+  const H = 1024;
+  return canvasTex(
+    12,
+    H,
+    (d, W) => {
+      for (let y = 0; y < H; y++) {
+        const u = y / (H - 1);
+        let a = 0;
+        let r = 220;
+        let g = 205;
+        let b = 170;
+        if (kind === "saturn") {
+          if (u < 0.18) a = 0.12 * (u / 0.18);
+          else if (u < 0.52) a = 0.82;
+          else if (u < 0.57) a = 0.04;
+          else if (u < 0.86) a = 0.5;
+          else if (u < 0.89) a = 0.07;
+          else a = 0.22 * (1 - u) / 0.11;
+          const grain = 0.75 + h3(y * 0.15, 2, 1) * 0.35;
+          a *= grain;
+        } else if (kind === "uranus") {
+          a = u > 0.35 && u < 0.8 ? 0.18 * (0.5 + h3(y, 1, 2) * 0.5) : 0.03;
+          r = 180;
+          g = 190;
+          b = 200;
+        } else {
+          a = 0.08 * Math.exp(-Math.pow((u - 0.55) / 0.25, 2));
+          r = 200;
+          g = 190;
+          b = 160;
+        }
+        for (let x = 0; x < W; x++) {
+          const i = (y * W + x) << 2;
+          const n = 0.9 + h3(x, y, 3) * 0.1;
+          d[i] = r * n;
+          d[i + 1] = g * n;
+          d[i + 2] = b * n;
+          d[i + 3] = clamp01(a) * 255;
+        }
+      }
+    },
+    { wrapS: THREE.RepeatWrapping, wrapT: THREE.ClampToEdgeWrapping }
+  );
+}
+
+const sunVert = /* glsl */ `
+varying vec3 vPos;
+varying vec3 vN;
+void main() {
+  vPos = position;
+  vN = normalize(normalMatrix * normal);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+const sunFrag = /* glsl */ `
+uniform float uTime;
+uniform float uGlow;
+varying vec3 vPos;
+varying vec3 vN;
+float hash(vec3 p) {
+  p = fract(p * 0.3183099 + 0.1);
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float noise(vec3 x) {
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+        mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+    mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+        mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+}
+float fbm(vec3 p) {
+  float v = 0.0;
+  float a = 0.5;
+  for (int i = 0; i < 5; i++) {
+    v += a * noise(p);
+    p *= 2.07;
+    a *= 0.5;
   }
-  mesh.instanceMatrix.needsUpdate = true;
-  mesh.userData.belt = data;
-  mesh.userData.inner = inner;
-  mesh.userData.outer = outer;
-  mesh.userData.count = count;
-  mesh.userData.dummy = dummy;
+  return v;
+}
+void main() {
+  vec3 p = normalize(vPos);
+  float t = uTime * 0.22;
+  float n = fbm(p * 3.4 + vec3(t, t * 0.7, -t * 0.4));
+  n = fbm(p * 2.2 + n * 1.8 + vec3(-t * 0.5, t, t * 0.3));
+  float limb = pow(clamp(dot(normalize(vN), vec3(0.0, 0.0, 1.0)) * 0.35 + 0.75, 0.0, 1.0), 1.4);
+  vec3 hot = vec3(1.0, 0.95, 0.72);
+  vec3 mid = vec3(1.0, 0.55, 0.12);
+  vec3 cool = vec3(0.75, 0.12, 0.02);
+  vec3 col = mix(cool, mid, n);
+  col = mix(col, hot, pow(n, 2.2));
+  col *= 1.15 * uGlow * limb;
+  float spot = smoothstep(0.62, 0.78, fbm(p * 5.0 + 4.0));
+  col *= 1.0 - spot * 0.35;
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+const atmVert = /* glsl */ `
+varying vec3 vW;
+varying vec3 vN;
+void main() {
+  vec4 w = modelMatrix * vec4(position, 1.0);
+  vW = w.xyz;
+  vN = normalize(mat3(modelMatrix) * normal);
+  gl_Position = projectionMatrix * viewMatrix * w;
+}
+`;
+const atmFrag = /* glsl */ `
+uniform vec3 uColor;
+uniform float uPow;
+uniform float uGain;
+uniform float uTime;
+uniform float uAurora;
+varying vec3 vW;
+varying vec3 vN;
+void main() {
+  vec3 n = normalize(vN);
+  vec3 v = normalize(cameraPosition - vW);
+  float f = pow(1.0 - abs(dot(n, v)), uPow);
+  vec3 col = uColor * f * uGain;
+  if (uAurora > 0.001) {
+    float polar = pow(abs(n.y), 7.0);
+    float band = 0.55 + 0.45 * sin(uTime * 1.8 + n.x * 14.0 + n.z * 9.0);
+    col += vec3(0.15, 1.0, 0.45) * polar * band * uAurora * f;
+  }
+  gl_FragColor = vec4(col, clamp(f * uGain, 0.0, 1.0));
+}
+`;
+const coronaFrag = /* glsl */ `
+uniform float uTime;
+uniform float uGlow;
+varying vec3 vW;
+varying vec3 vN;
+void main() {
+  vec3 n = normalize(vN);
+  vec3 v = normalize(cameraPosition - vW);
+  float f = pow(1.0 - abs(dot(n, v)), 2.6);
+  float boil = 0.7 + 0.3 * sin(uTime * 0.8 + n.x * 8.0);
+  vec3 col = mix(vec3(1.0, 0.55, 0.1), vec3(1.0, 0.2, 0.02), f) * f * 1.4 * uGlow * boil;
+  gl_FragColor = vec4(col, f * 0.85);
+}
+`;
+
+function glowSprite(color, size) {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const g = c.getContext("2d");
+  const grd = g.createRadialGradient(128, 128, 4, 128, 128, 128);
+  grd.addColorStop(0, color);
+  grd.addColorStop(0.25, color.replace("1)", "0.45)"));
+  grd.addColorStop(0.55, color.replace("1)", "0.12)"));
+  grd.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 256, 256);
+  const tex = new THREE.CanvasTexture(c);
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    transparent: true,
+    opacity: 0.95 * sunGlow,
+  });
+  const s = new THREE.Sprite(mat);
+  s.scale.setScalar(size);
+  return s;
+}
+
+const SUN_R = 1.08;
+const sunMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uGlow: { value: sunGlow } },
+  vertexShader: sunVert,
+  fragmentShader: sunFrag,
+});
+const sun = new THREE.Mesh(unitSphere(SEG), sunMat);
+sun.scale.setScalar(SUN_R);
+scene.add(sun);
+
+const coronaMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uGlow: { value: sunGlow } },
+  vertexShader: atmVert,
+  fragmentShader: coronaFrag,
+  side: THREE.BackSide,
+  blending: THREE.AdditiveBlending,
+  transparent: true,
+  depthWrite: false,
+});
+const corona = new THREE.Mesh(unitSphere(40), coronaMat);
+corona.scale.setScalar(SUN_R * 1.55);
+scene.add(corona);
+scene.add(glowSprite("rgba(255,210,80,1)", 5.4 * sunGlow));
+scene.add(glowSprite("rgba(255,120,20,1)", 9.2 * sunGlow));
+scene.add(glowSprite("rgba(255,60,10,1)", 14.5 * sunGlow));
+
+const sunLight = new THREE.PointLight(0xfff1c8, 14, 0, 1.05);
+scene.add(sunLight);
+scene.add(new THREE.AmbientLight(0x1a2438, 0.32));
+scene.add(new THREE.HemisphereLight(0x334466, 0x050308, 0.18));
+
+function makeLabel(text, y) {
+  const el = document.createElement("div");
+  el.textContent = show("labels") ? text : "";
+  const obj = new CSS2DObject(el);
+  obj.position.set(0, y, 0);
+  return obj;
+}
+
+function planetMat(map, extra = {}) {
+  return new THREE.MeshStandardMaterial({
+    map,
+    roughness: extra.roughness ?? 0.72,
+    metalness: extra.metalness ?? 0.04,
+    emissive: extra.emissive ?? 0x000000,
+    emissiveMap: extra.emissiveMap ?? null,
+    emissiveIntensity: extra.emissiveIntensity ?? 0,
+    bumpMap: extra.bumpMap ?? map,
+    bumpScale: extra.bumpScale ?? 0.012,
+  });
+}
+
+function addAtmosphere(parent, radius, color, gain, pow, aurora = 0) {
+  if (!show("atmospheres")) return null;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(color) },
+      uPow: { value: pow },
+      uGain: { value: gain },
+      uTime: { value: 0 },
+      uAurora: { value: aurora },
+    },
+    vertexShader: atmVert,
+    fragmentShader: atmFrag,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.BackSide,
+  });
+  const mesh = new THREE.Mesh(unitSphere(36), mat);
+  mesh.scale.setScalar(radius);
+  parent.add(mesh);
+  return mat;
+}
+
+function addRings(parent, inner, outer, tex, tilt = 0) {
+  const geo = new THREE.RingGeometry(inner, outer, 160, 6);
+  const pos = geo.attributes.position;
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const r = Math.hypot(x, y);
+    uv.setXY(i, Math.atan2(y, x) / (Math.PI * 2) + 0.5, (r - inner) / (outer - inner));
+  }
+  uv.needsUpdate = true;
+  const mat = new THREE.MeshStandardMaterial({
+    map: tex,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    roughness: 0.55,
+    metalness: 0.12,
+    alphaTest: 0.04,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = Math.PI / 2 + tilt;
+  parent.add(mesh);
   return mesh;
 }
 
-function makeSun(size, glow, power) {
-  const group = new THREE.Group();
-  group.name = "sun";
-
-  const core = new THREE.Mesh(
-    new THREE.SphereGeometry(size, 64, 64),
-    new THREE.MeshBasicMaterial({
-      map: sunTexture(),
-      color: 0xffeeaa,
-    })
-  );
-  core.name = "sun-core";
-  group.add(core);
-
-  // inner hot shell
-  const shell = new THREE.Mesh(
-    new THREE.SphereGeometry(size * 1.04, 48, 48),
-    new THREE.MeshBasicMaterial({
-      color: 0xffaa33,
-      transparent: true,
-      opacity: 0.35 * glow,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.BackSide,
-    })
-  );
-  group.add(shell);
-
-  // corona shells
-  const coronaMats = [];
-  for (let i = 0; i < 4; i++) {
-    const s = size * (1.15 + i * 0.28);
-    const m = new THREE.MeshBasicMaterial({
-      color: i % 2 === 0 ? 0xff8800 : 0xffcc44,
-      transparent: true,
-      opacity: (0.12 - i * 0.02) * glow,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.BackSide,
-    });
-    coronaMats.push(m);
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(s, 32, 32), m);
-    mesh.name = `corona-${i}`;
-    group.add(mesh);
+function ellipsePts(a, e, n) {
+  const pts = [];
+  const ee = elliptical ? e : 0;
+  for (let i = 0; i <= n; i++) {
+    const M = (i / n) * Math.PI * 2;
+    const E = M + ee * Math.sin(M);
+    pts.push(new THREE.Vector3(a * (Math.cos(E) - ee), 0, a * Math.sqrt(Math.max(0, 1 - ee * ee)) * Math.sin(E)));
   }
-
-  // equatorial flare disc
-  const disc = new THREE.Mesh(
-    new THREE.RingGeometry(size * 1.05, size * 2.4, 64),
-    new THREE.MeshBasicMaterial({
-      color: 0xffaa22,
-      transparent: true,
-      opacity: 0.18 * glow,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    })
-  );
-  disc.rotation.x = Math.PI / 2;
-  group.add(disc);
-
-  const light = new THREE.PointLight(0xfff0d0, power, 0, 1.15);
-  light.position.set(0, 0, 0);
-  group.add(light);
-
-  // soft ambient fill so dark sides aren't pure black
-  const fill = new THREE.AmbientLight(0x1a2238, 0.35);
-  group.add(fill);
-  const hemi = new THREE.HemisphereLight(0x2040a0, 0x080808, 0.25);
-  group.add(hemi);
-
-  group.userData.core = core;
-  group.userData.shell = shell;
-  group.userData.coronaMats = coronaMats;
-  group.userData.disc = disc;
-  group.userData.light = light;
-  group.userData.size = size;
-  return group;
+  return pts;
 }
 
-function makePlanet(def, scale, quality, visible) {
-  const segs = Math.max(12, Math.round(def.segs * segMul(quality)));
-  const group = new THREE.Group();
-  group.name = def.id;
-  group.visible = visible;
+function kepler(a, e, M) {
+  const ee = elliptical ? e : 0;
+  const E = M + ee * Math.sin(M) + 0.5 * ee * ee * Math.sin(2 * M);
+  return [a * (Math.cos(E) - ee), a * Math.sqrt(Math.max(0, 1 - ee * ee)) * Math.sin(E)];
+}
 
-  let map = null;
-  if (def.id === "earth") map = earthTexture();
-  else if (def.bands) map = bandTexture(def.color, def.id === "jupiter" ? 1 : 3);
-  else if (def.id === "saturn") map = bandTexture(def.color, 2);
+const movers = [];
+const atmMats = [coronaMat];
 
-  const mat = new THREE.MeshStandardMaterial({
-    color: map ? 0xffffff : def.color,
-    map: map || null,
-    emissive: def.emissive ?? 0x000000,
-    emissiveIntensity: 0.35,
-    metalness: def.metalness ?? 0.2,
-    roughness: def.roughness ?? 0.5,
+function addOrbitLine(root, a, e, color) {
+  if (!show("orbits")) return;
+  const geo = new THREE.BufferGeometry().setFromPoints(ellipsePts(a, e, 256));
+  const mat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.32,
+    depthWrite: false,
   });
-  const body = new THREE.Mesh(
-    new THREE.SphereGeometry(def.r * scale, segs, segs),
-    mat
-  );
-  body.castShadow = false;
-  body.receiveShadow = false;
-  body.name = `${def.id}-body`;
-  group.add(body);
+  root.add(new THREE.LineLoop(geo, mat));
+}
 
-  if (def.atmosphere) {
-    const atm = new THREE.Mesh(
-      new THREE.SphereGeometry(def.r * scale * 1.06, segs, segs),
-      new THREE.MeshBasicMaterial({
-        color: def.atmosphere,
-        transparent: true,
-        opacity: 0.14,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.BackSide,
-      })
-    );
-    atm.name = `${def.id}-atm`;
-    group.add(atm);
+function mountMoon(parent, spec, planetR) {
+  const pivot = new THREE.Group();
+  parent.add(pivot);
+  const r = spec.r * planetScale;
+  const mesh = new THREE.Mesh(unitSphere(SEG_SMALL), planetMat(spec.map ?? maps.moon, { roughness: 0.86, bumpScale: 0.02 }));
+  mesh.scale.setScalar(r);
+  const dist = spec.dist * planetScale;
+  mesh.position.set(dist, 0, 0);
+  pivot.add(mesh);
+  if (spec.atm) addAtmosphere(mesh, 1.18, spec.atm, 0.7, 2.4);
+  if (show("labels") && spec.name) mesh.add(makeLabel(spec.name, 1.35));
+  addOrbitLine(pivot, dist, 0.02, 0x667788);
+  movers.push({
+    kind: "moon",
+    body: mesh,
+    a: dist,
+    e: 0.02,
+    period: spec.period,
+    phase: spec.phase ?? Math.random() * Math.PI * 2,
+    spin: spec.spin ?? 6,
+  });
+  return mesh;
+}
+
+const BODIES = [
+  {
+    name: "Mercury",
+    a: 2.85,
+    e: 0.205,
+    inc: 7,
+    period: 0.241,
+    spin: 3.2,
+    tilt: 0.03,
+    r: 0.145,
+    map: maps.mercury,
+    color: 0xb0a89c,
+    phase: 0.4,
+  },
+  {
+    name: "Venus",
+    a: 4.15,
+    e: 0.007,
+    inc: 3.4,
+    period: 0.615,
+    spin: -1.15,
+    tilt: 177,
+    r: 0.23,
+    map: maps.venus,
+    color: 0xe6c98a,
+    atm: { c: 0xffd9a0, g: 0.85, p: 2.1, s: 1.06 },
+    clouds: { map: maps.venus, s: 1.018, op: 0.35 },
+    phase: 1.7,
+    rough: 0.55,
+  },
+  {
+    name: "Earth",
+    a: 5.55,
+    e: 0.017,
+    inc: 0,
+    period: 1,
+    spin: 8.2,
+    tilt: 23.4,
+    r: 0.245,
+    map: maps.earth,
+    color: 0x4d8fd6,
+    atm: { c: 0x6eb6ff, g: 1.15, p: 2.8, s: 1.12, aurora: 0.9 },
+    clouds: { map: maps.earthCloud, s: 1.02, op: 0.55 },
+    night: maps.earthNight,
+    phase: 0.15,
+    rough: 0.48,
+    moons: [{ name: "Moon", dist: 0.62, r: 0.067, period: 0.075, map: maps.moon, spin: 2.4 }],
+  },
+  {
+    name: "Mars",
+    a: 7.15,
+    e: 0.093,
+    inc: 1.85,
+    period: 1.881,
+    spin: 7.8,
+    tilt: 25.2,
+    r: 0.168,
+    map: maps.mars,
+    color: 0xc1440e,
+    atm: { c: 0xff8a5a, g: 0.45, p: 3.2, s: 1.08 },
+    phase: 2.4,
+    moons: [
+      { name: "Phobos", dist: 0.3, r: 0.02, period: 0.009, spin: 10 },
+      { name: "Deimos", dist: 0.42, r: 0.014, period: 0.03, spin: 5 },
+    ],
+  },
+  {
+    name: "Jupiter",
+    a: 11.35,
+    e: 0.049,
+    inc: 1.3,
+    period: 11.86,
+    spin: 18,
+    tilt: 3.1,
+    r: 0.74,
+    map: maps.jupiter,
+    color: 0xd4b48a,
+    atm: { c: 0xe8d2a8, g: 0.4, p: 3.4, s: 1.06 },
+    rings: { kind: "jup", inner: 1.12, outer: 1.55 },
+    phase: 5.1,
+    rough: 0.62,
+    moons: [
+      { name: "Io", dist: 1.22, r: 0.052, period: 0.18, map: maps.io, spin: 4 },
+      { name: "Europa", dist: 1.48, r: 0.044, period: 0.36, map: maps.europa, spin: 3 },
+      { name: "Ganymede", dist: 1.82, r: 0.06, period: 0.72, map: maps.ganymede, spin: 2.2 },
+      { name: "Callisto", dist: 2.22, r: 0.054, period: 1.4, map: maps.callisto, spin: 1.6 },
+    ],
+  },
+  {
+    name: "Saturn",
+    a: 15.15,
+    e: 0.057,
+    inc: 2.5,
+    period: 29.46,
+    spin: 16,
+    tilt: 26.7,
+    r: 0.62,
+    map: maps.saturn,
+    color: 0xe8d9a6,
+    atm: { c: 0xffe8b0, g: 0.35, p: 3.2, s: 1.055 },
+    rings: { kind: "saturn", inner: 1.22, outer: 2.35 },
+    phase: 3.6,
+    moons: [{ name: "Titan", dist: 1.55, r: 0.055, period: 0.44, map: maps.titan, atm: 0xffc080, spin: 2 }],
+  },
+  {
+    name: "Uranus",
+    a: 18.85,
+    e: 0.046,
+    inc: 0.8,
+    period: 84,
+    spin: -10,
+    tilt: 97.8,
+    r: 0.39,
+    map: maps.uranus,
+    color: 0x9fe7e4,
+    atm: { c: 0xb0fff8, g: 0.4, p: 3.0, s: 1.07 },
+    rings: { kind: "uranus", inner: 1.35, outer: 1.95 },
+    phase: 1.1,
+    rough: 0.45,
+  },
+  {
+    name: "Neptune",
+    a: 22.35,
+    e: 0.01,
+    inc: 1.8,
+    period: 164.8,
+    spin: 12,
+    tilt: 28.3,
+    r: 0.38,
+    map: maps.neptune,
+    color: 0x3a6adf,
+    atm: { c: 0x5a8cff, g: 0.55, p: 2.9, s: 1.08 },
+    phase: 4.8,
+    rough: 0.42,
+  },
+  {
+    name: "Pluto",
+    a: 25.6,
+    e: 0.25,
+    inc: 17.1,
+    period: 248,
+    spin: -4.5,
+    tilt: 122,
+    r: 0.1,
+    map: maps.pluto,
+    color: 0xd2c4b0,
+    phase: 0.9,
+    moons: [{ name: "Charon", dist: 0.26, r: 0.05, period: 0.017, map: maps.charon, spin: 8 }],
+  },
+];
+
+for (const b of BODIES) {
+  const root = new THREE.Group();
+  root.rotation.z = (b.inc * Math.PI) / 180;
+  scene.add(root);
+  addOrbitLine(root, b.a, b.e, b.color);
+
+  const body = new THREE.Group();
+  root.add(body);
+
+  const tiltG = new THREE.Group();
+  tiltG.rotation.z = (b.tilt * Math.PI) / 180;
+  body.add(tiltG);
+
+  const spinG = new THREE.Group();
+  tiltG.add(spinG);
+
+  const r = b.r * planetScale;
+  const extra = {
+    roughness: b.rough ?? 0.72,
+    bumpScale: 0.016,
+  };
+  if (b.night) {
+    extra.emissive = 0xffcc88;
+    extra.emissiveMap = b.night;
+    extra.emissiveIntensity = 0.85;
+  }
+  const mesh = new THREE.Mesh(unitSphere(b.r > 0.4 ? SEG : Math.max(32, SEG - 16)), planetMat(b.map, extra));
+  mesh.scale.setScalar(r);
+  spinG.add(mesh);
+
+  if (b.clouds) {
+    const cmat = new THREE.MeshStandardMaterial({
+      map: b.clouds.map,
+      transparent: true,
+      opacity: b.clouds.op,
+      depthWrite: false,
+      roughness: 1,
+      metalness: 0,
+    });
+    const clouds = new THREE.Mesh(unitSphere(SEG), cmat);
+    clouds.scale.setScalar(r * b.clouds.s);
+    spinG.add(clouds);
+    movers.push({ kind: "spin", body: clouds, spin: b.spin * 0.7, period: 1e9, a: 0, e: 0, phase: 0 });
   }
 
-  if (def.rings) {
-    const rings = new THREE.Mesh(
-      new THREE.RingGeometry(def.r * scale * 1.35, def.r * scale * 2.35, 96),
-      new THREE.MeshStandardMaterial({
-        color: 0xd8c8a0,
-        metalness: 0.25,
-        roughness: 0.65,
-        transparent: true,
-        opacity: 0.85,
-        side: THREE.DoubleSide,
-      })
-    );
-    rings.rotation.x = Math.PI / 2;
-    // subtle ring color variation via second ring
-    const rings2 = new THREE.Mesh(
-      new THREE.RingGeometry(def.r * scale * 1.55, def.r * scale * 1.72, 96),
-      new THREE.MeshBasicMaterial({
-        color: 0x1a1410,
-        transparent: true,
-        opacity: 0.45,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      })
-    );
-    rings2.rotation.x = Math.PI / 2;
-    const ringGroup = new THREE.Group();
-    ringGroup.name = "saturn-rings";
-    ringGroup.add(rings);
-    ringGroup.add(rings2);
-    ringGroup.rotation.z = def.tilt * 0.35;
-    group.add(ringGroup);
+  if (b.atm) {
+    const am = addAtmosphere(tiltG, r * b.atm.s, b.atm.c, b.atm.g * sunGlow, b.atm.p, b.atm.aurora ?? 0);
+    if (am) atmMats.push(am);
+  }
+  if (b.rings) {
+    const tex = ringTex(b.rings.kind);
+    addRings(tiltG, r * b.rings.inner, r * b.rings.outer, tex);
   }
 
-  // axial tilt on body group child
-  const tilted = new THREE.Group();
-  tilted.name = `${def.id}-tilt`;
-  // reparent body pieces into tilt? simpler: rotate group in update for spin on tilted axis
-  group.userData.def = def;
-  group.userData.body = body;
-  group.userData.spin = 0;
-  group.userData.scale = scale;
-  group.rotation.z = def.tilt ?? 0;
+  if (show("moons") && b.moons) {
+    for (const m of b.moons) mountMoon(tiltG, m, r);
+  }
 
-  return group;
+  body.add(makeLabel(b.name, r + 0.18));
+
+  movers.push({
+    kind: "planet",
+    body,
+    spinG,
+    a: b.a,
+    e: b.e,
+    period: b.period,
+    phase: b.phase,
+    spin: b.spin,
+  });
 }
 
-function makeMoon(scale, quality, visible) {
-  const segs = Math.max(12, Math.round(MOON.segs * segMul(quality)));
-  const group = new THREE.Group();
-  group.name = "moon";
-  group.visible = visible;
-  const body = new THREE.Mesh(
-    new THREE.SphereGeometry(MOON.r * scale, segs, segs),
-    new THREE.MeshStandardMaterial({
-      color: MOON.color,
-      emissive: MOON.emissive,
-      emissiveIntensity: 0.25,
-      metalness: MOON.metalness,
-      roughness: MOON.roughness,
-      flatShading: quality === "draft",
-    })
+sun.add(makeLabel("Sol", SUN_R + 0.28));
+
+function makeBelt(count, r0, r1, ySpread, size0, size1, pal, speed) {
+  const geo = new THREE.IcosahedronGeometry(1, 0);
+  const mat = new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0.08, vertexColors: false });
+  const mesh = new THREE.InstancedMesh(geo, mat, count);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const dummy = new THREE.Object3D();
+  const items = [];
+  const color = new THREE.Color();
+  mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
+  for (let i = 0; i < count; i++) {
+    const u = h3(i, 1.7, 9);
+    const a = lerp(r0, r1, u);
+    const th = h3(i, 2.2, 4) * Math.PI * 2;
+    const e = 0.04 + h3(i, 3, 1) * 0.08;
+    const y = (h3(i, 5, 2) - 0.5) * ySpread;
+    const s = lerp(size0, size1, h3(i, 8, 3));
+    const rx = h3(i, 1, 1) * Math.PI * 2;
+    const ry = h3(i, 2, 2) * Math.PI * 2;
+    const rz = h3(i, 3, 3) * Math.PI * 2;
+    items.push({ a, th, e, y, s, rx, ry, rz, tw: lerp(0.2, 1.4, h3(i, 9, 4)) });
+    color.setHSL(pal.h + (h3(i, 4, 6) - 0.5) * pal.dh, pal.s, pal.l + (h3(i, 7, 1) - 0.5) * 0.12);
+    mesh.setColorAt(i, color);
+    dummy.position.set(a * Math.cos(th), y, a * Math.sin(th));
+    dummy.scale.setScalar(s);
+    dummy.rotation.set(rx, ry, rz);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(i, dummy.matrix);
+  }
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  scene.add(mesh);
+  return { mesh, items, dummy, speed };
+}
+
+const asteroidBelt = show("asteroids")
+  ? makeBelt(AST_N, 8.15, 9.55, 0.28, 0.012, 0.045, { h: 0.08, dh: 0.04, s: 0.35, l: 0.42 }, 0.72)
+  : null;
+const kuiperBelt = show("kuiper")
+  ? makeBelt(KUIPER_N, 26.6, 31.2, 1.1, 0.018, 0.055, { h: 0.55, dh: 0.08, s: 0.15, l: 0.62 }, 0.11)
+  : null;
+
+let comet = null;
+let cometTail = null;
+let cometTail2 = null;
+if (show("comet")) {
+  const root = new THREE.Group();
+  root.rotation.z = 0.32;
+  scene.add(root);
+  addOrbitLine(root, 16.8, 0.78, 0x88ddff);
+  const body = new THREE.Group();
+  root.add(body);
+  const core = new THREE.Mesh(
+    unitSphere(16),
+    new THREE.MeshStandardMaterial({ color: 0xccddff, emissive: 0x88aaff, emissiveIntensity: 0.4, roughness: 0.5 })
   );
-  group.add(body);
-  group.userData.def = MOON;
-  group.userData.body = body;
-  group.userData.spin = 0;
-  return group;
+  core.scale.setScalar(0.07 * planetScale);
+  body.add(core);
+  body.add(makeLabel("Comet", 0.16));
+  const mkTail = (n, color, size) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const m = new THREE.PointsMaterial({
+      color,
+      size,
+      transparent: true,
+      opacity: 0.75,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      sizeAttenuation: true,
+    });
+    const p = new THREE.Points(g, m);
+    body.add(p);
+    return { g, n, p, seeds: Float32Array.from({ length: n * 3 }, (_, i) => h3(i * 0.17, 2, 9) - 0.5) };
+  };
+  cometTail = mkTail(detail === "low" ? 180 : 420, 0xaad4ff, 0.09);
+  cometTail2 = mkTail(detail === "low" ? 120 : 280, 0xffcc88, 0.07);
+  comet = { body, a: 16.8, e: 0.78, period: 18.5, phase: 2.1 };
+  movers.push({ kind: "planet", body, a: comet.a, e: comet.e, period: comet.period, phase: comet.phase, spin: 0, spinG: core });
 }
 
-function detachFlyListeners() {
-  if (!fly.listeners) return;
-  const { el, onKeyDown, onKeyUp, onMouseMove, onClick, onLockChange, onBlur } =
-    fly.listeners;
-  el.removeEventListener("keydown", onKeyDown);
-  el.removeEventListener("keyup", onKeyUp);
-  document.removeEventListener("mousemove", onMouseMove);
-  el.removeEventListener("click", onClick);
-  document.removeEventListener("pointerlockchange", onLockChange);
-  window.removeEventListener("blur", onBlur);
-  fly.listeners = null;
-  fly.bound = false;
-}
+const ecliptic = new THREE.Mesh(
+  new THREE.RingGeometry(2.2, 26, 96, 1),
+  new THREE.MeshBasicMaterial({
+    color: 0xffdca0,
+    transparent: true,
+    opacity: 0.035,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  })
+);
+ecliptic.rotation.x = -Math.PI / 2;
+scene.add(ecliptic);
 
-function bindFly(host) {
-  detachFlyListeners();
-  const el = host.domElement;
-  if (!el) return;
-  el.tabIndex = 0;
-  el.style.outline = "none";
-
-  const onKeyDown = (e) => {
-    // do not steal host R / /
-    if (e.key === "r" || e.key === "R" || e.key === "/") return;
-    fly.keys[e.code] = true;
-    if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
-      e.preventDefault();
-    }
-    if (e.code === "KeyC") {
-      // reset near Earth
-      const earth = fly.bodies?.get("earth");
-      if (earth) {
-        const p = earth.position;
-        host.camera.position.set(p.x + 4.5, p.y + 1.8, p.z + 5.5);
-        fly.yaw = Math.atan2(
-          p.x - host.camera.position.x,
-          p.z - host.camera.position.z
-        );
-        fly.pitch = -0.18;
-        fly.vel.set(0, 0, 0);
+function milkyTex() {
+  return canvasTex(1024, 512, (d, W, H) => {
+    for (let y = 0; y < H; y++) {
+      const v = y / (H - 1);
+      for (let x = 0; x < W; x++) {
+        const u = x / W;
+        const band = Math.exp(-Math.pow((v - 0.5) / 0.09, 2));
+        const dust = fbm(u * 8, v * 4, 2.2, 4);
+        const star = h3(x * 0.37, y * 0.61, 3.1);
+        const neb = fbm(u * 4 + 2, v * 3, 5, 3);
+        let r = 4 + band * dust * 38 + neb * band * 18;
+        let g = 5 + band * dust * 32 + neb * band * 10;
+        let b = 10 + band * dust * 28;
+        if (star > 0.985) {
+          const t = (star - 0.985) / 0.015;
+          r += 180 * t;
+          g += 180 * t;
+          b += 200 * t;
+        }
+        const i = (y * W + x) << 2;
+        d[i] = r;
+        d[i + 1] = g;
+        d[i + 2] = b;
+        d[i + 3] = 255;
       }
     }
-  };
-  const onKeyUp = (e) => {
-    fly.keys[e.code] = false;
-  };
-  const onMouseMove = (e) => {
-    if (!fly.pointerLocked) return;
-    const sens = host.params?.look_sens ?? 0.0022;
-    fly.yaw -= e.movementX * sens;
-    fly.pitch -= e.movementY * sens;
-    const lim = Math.PI / 2 - 0.05;
-    fly.pitch = Math.max(-lim, Math.min(lim, fly.pitch));
-  };
-  const onClick = () => {
-    if (document.pointerLockElement !== el) {
-      el.requestPointerLock?.();
-    }
-    el.focus?.();
-  };
-  const onLockChange = () => {
-    fly.pointerLocked = document.pointerLockElement === el;
-  };
-  const onBlur = () => {
-    for (const k of Object.keys(fly.keys)) fly.keys[k] = false;
-  };
-
-  el.addEventListener("keydown", onKeyDown);
-  el.addEventListener("keyup", onKeyUp);
-  document.addEventListener("mousemove", onMouseMove);
-  el.addEventListener("click", onClick);
-  document.addEventListener("pointerlockchange", onLockChange);
-  window.addEventListener("blur", onBlur);
-
-  fly.listeners = {
-    el,
-    onKeyDown,
-    onKeyUp,
-    onMouseMove,
-    onClick,
-    onLockChange,
-    onBlur,
-  };
-  fly.bound = true;
+  });
 }
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(380, 32, 20),
+  new THREE.MeshBasicMaterial({ map: milkyTex(), side: THREE.BackSide, depthWrite: false })
+);
+scene.add(sky);
 
-function keplerRadius(a, e, theta) {
-  return (a * (1 - e * e)) / (1 + e * Math.cos(theta));
-}
-
-// ─── setup ──────────────────────────────────────────────────────────────────
-export function setup(host) {
-  const p = host.params;
-  const quality = p.quality ?? "high";
-  const pScale = p.planet_scale ?? 1;
-  const sunSize = p.sun_size ?? 6;
-  const visible = new Set(
-    Array.isArray(p.visible_bodies) ? p.visible_bodies : []
-  );
-  const e = p.eccentricity ?? 0.04;
-
-  // clear module scene refs (root is cleared by host)
-  fly.bodies = new Map();
-  fly.trails = [];
-  fly.labelNodes = [];
-  fly.orbitLines = [];
-  fly.belt = null;
-  fly.stars = null;
-
-  // space backdrop via scene fog-ish dark — host owns scene bg; use huge sphere
-  const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(900, 24, 24),
-    new THREE.MeshBasicMaterial({
-      color: 0x02040c,
-      side: THREE.BackSide,
-      depthWrite: false,
-    })
-  );
-  sky.name = "sky-dome";
-  host.root.add(sky);
-
-  if (p.show_stars !== false) {
-    const stars = makeStarfield(Math.floor(p.star_count ?? 10000), 700);
-    host.root.add(stars);
-    fly.stars = stars;
+function starfield(n, radius, size, bright) {
+  const pos = new Float32Array(n * 3);
+  const col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const u = h3(i, 1, 8);
+    const v = h3(i, 4, 3);
+    const th = u * Math.PI * 2;
+    const ph = Math.acos(2 * v - 1);
+    const rr = radius * (0.86 + h3(i, 7, 2) * 0.14);
+    pos[i * 3] = rr * Math.sin(ph) * Math.cos(th);
+    pos[i * 3 + 1] = rr * Math.cos(ph);
+    pos[i * 3 + 2] = rr * Math.sin(ph) * Math.sin(th);
+    const sp = h3(i, 9, 1);
+    const temp = h3(i, 2, 6);
+    const mag = bright ? 0.75 + sp * 0.25 : 0.35 + sp * 0.45;
+    col[i * 3] = mag * lerp(0.7, 1, temp);
+    col[i * 3 + 1] = mag * lerp(0.8, 1, Math.abs(temp - 0.4));
+    col[i * 3 + 2] = mag * lerp(1, 0.75, temp);
   }
-
-  const sun = makeSun(sunSize, p.glow ?? 1, p.sun_power ?? 140);
-  host.root.add(sun);
-  fly.sunCore = sun.userData.core;
-  fly.sunGlow = sun.userData.shell;
-  fly.sunCorona = sun;
-  fly.sunLight = sun.userData.light;
-
-  if (p.show_labels !== false) {
-    const sunLbl = new THREE.Object3D();
-    sunLbl.position.set(0, sunSize + 1.2, 0);
-    sunLbl.userData.annotation = "Sun — $1.99\\times 10^{30}\\,\\mathrm{kg}$";
-    sunLbl.name = "label-sun";
-    host.root.add(sunLbl);
-    fly.labelNodes.push(sunLbl);
-  }
-
-  // planets
-  for (const def of PLANETS) {
-    const show = visible.has(def.id);
-    const g = makePlanet(def, pScale, quality, show);
-    host.root.add(g);
-    fly.bodies.set(def.id, g);
-
-    if (p.show_orbits !== false) {
-      const col = new THREE.Color(def.color).multiplyScalar(0.85);
-      const orbit = makeOrbitLine(def.dist, e, col.getHex(), quality === "draft" ? 96 : 192);
-      orbit.visible = show;
-      host.root.add(orbit);
-      fly.orbitLines.push({ line: orbit, id: def.id });
-    }
-
-    if (p.show_labels !== false && show) {
-      const lbl = new THREE.Object3D();
-      lbl.userData.annotation = def.name;
-      lbl.name = `label-${def.id}`;
-      host.root.add(lbl);
-      fly.labelNodes.push(lbl);
-      g.userData.label = lbl;
-    }
-  }
-
-  // moon (orbits Earth)
-  if (visible.has("moon") || visible.has("earth")) {
-    const moon = makeMoon(pScale, quality, visible.has("moon"));
-    host.root.add(moon);
-    fly.bodies.set("moon", moon);
-    if (p.show_labels !== false && visible.has("moon")) {
-      const lbl = new THREE.Object3D();
-      lbl.userData.annotation = "Moon";
-      lbl.name = "label-moon";
-      host.root.add(lbl);
-      fly.labelNodes.push(lbl);
-      moon.userData.label = lbl;
-    }
-  }
-
-  // asteroid belt between Mars and Jupiter
-  if (p.show_belt !== false) {
-    const belt = makeAsteroidBelt(
-      Math.floor(p.belt_count ?? 2000),
-      42,
-      52
-    );
-    host.root.add(belt);
-    fly.belt = belt;
-  }
-
-  // faint ecliptic grid ring (showcase polish)
-  const ecliptic = new THREE.Mesh(
-    new THREE.RingGeometry(10, 140, 128),
-    new THREE.MeshBasicMaterial({
-      color: 0x2244aa,
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  return new THREE.Points(
+    g,
+    new THREE.PointsMaterial({
+      size,
+      vertexColors: true,
       transparent: true,
-      opacity: 0.035,
-      side: THREE.DoubleSide,
+      opacity: 0.92,
       depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      sizeAttenuation: true,
     })
   );
-  ecliptic.rotation.x = -Math.PI / 2;
-  ecliptic.name = "ecliptic";
-  host.root.add(ecliptic);
+}
+scene.add(starfield(STAR_N, 320, 0.42, false));
+scene.add(starfield((STAR_N / 7) | 0, 300, 0.95, true));
 
-  // initial camera (once)
-  if (!fly.inited) {
-    host.camera.position.set(32, 10, 38);
-    fly.yaw = 0.55;
-    fly.pitch = -0.15;
-    fly.vel.set(0, 0, 0);
-    fly.inited = true;
-  }
-  host.camera.near = 0.05;
-  host.camera.far = 2500;
-  host.camera.updateProjectionMatrix?.();
-  applyCameraOrientation(host);
+const windPos = new Float32Array(WIND_N * 3);
+const windSeed = [];
+for (let i = 0; i < WIND_N; i++) {
+  const th = h3(i, 1, 2) * Math.PI * 2;
+  const ph = Math.acos(2 * h3(i, 3, 4) - 1);
+  const dir = new THREE.Vector3(Math.sin(ph) * Math.cos(th), Math.cos(ph), Math.sin(ph) * Math.sin(th));
+  const rad = 1.4 + h3(i, 5, 6) * 18;
+  windSeed.push({ dir, rad, sp: 1.5 + h3(i, 8, 1) * 4 });
+  windPos[i * 3] = dir.x * rad;
+  windPos[i * 3 + 1] = dir.y * rad;
+  windPos[i * 3 + 2] = dir.z * rad;
+}
+const windGeo = new THREE.BufferGeometry();
+windGeo.setAttribute("position", new THREE.BufferAttribute(windPos, 3));
+const wind = new THREE.Points(
+  windGeo,
+  new THREE.PointsMaterial({
+    color: 0xffcc66,
+    size: 0.06,
+    transparent: true,
+    opacity: 0.45,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  })
+);
+scene.add(wind);
 
-  bindFly(host);
-
-  // store live params snapshot for onFrame
-  host.root.userData.p = p;
+const meteor = {
+  line: null,
+  t: 0,
+  life: 0,
+  from: new THREE.Vector3(),
+  vel: new THREE.Vector3(),
+};
+{
+  const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, 1)]);
+  const m = new THREE.LineBasicMaterial({
+    color: 0xfff4d0,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  meteor.line = new THREE.Line(g, m);
+  scene.add(meteor.line);
 }
 
-function applyCameraOrientation(host) {
-  fly.euler.set(fly.pitch, fly.yaw, 0);
-  host.camera.quaternion.setFromEuler(fly.euler);
+function placeBelt(belt, years) {
+  if (!belt) return;
+  const { mesh, items, dummy, speed } = belt;
+  const dummyQuat = dummy.quaternion;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const M = it.th + years * speed * (8 / it.a);
+    const [x, z] = kepler(it.a, it.e, M);
+    dummy.position.set(x, it.y, z);
+    dummy.rotation.set(it.rx + years * it.tw, it.ry + years * it.tw * 0.6, it.rz);
+    dummy.scale.setScalar(it.s);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(i, dummy.matrix);
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  void dummyQuat;
 }
 
-// ─── sim (pausable) ─────────────────────────────────────────────────────────
-export function update(host, t, dt) {
-  const p = host.params;
-  const e = p.eccentricity ?? 0.04;
-  const ts = (p.time_scale ?? 1) / 5;
-  // mean motion scale: Earth period ≈ 10π host-seconds at time_scale 1
-  const phase = t * ts;
-
-  for (const def of PLANETS) {
-    const g = fly.bodies?.get(def.id);
-    if (!g) continue;
-    const theta = phase / def.period;
-    const r = keplerRadius(def.dist, e, theta);
-    g.position.set(Math.cos(theta) * r, 0, Math.sin(theta) * r);
-    g.userData.spin = (g.userData.spin ?? 0) + def.spin * ts * dt;
-    if (g.userData.body) g.userData.body.rotation.y = g.userData.spin;
-
-    if (g.userData.label) {
-      const lift = (def.r * (p.planet_scale ?? 1)) + 0.55;
-      g.userData.label.position.set(g.position.x, g.position.y + lift, g.position.z);
-    }
+function updateTail(tail, years) {
+  if (!tail || !comet) return;
+  const pos = tail.g.attributes.position.array;
+  const away = comet.body.position.clone().normalize();
+  const side = new THREE.Vector3(-away.z, 0.15, away.x).normalize();
+  const up = new THREE.Vector3().crossVectors(away, side).normalize();
+  const stretch = 0.55 + 2.4 * (1 - Math.min(1, comet.body.position.length() / 22));
+  for (let i = 0; i < tail.n; i++) {
+    const k = i / tail.n;
+    const sx = tail.seeds[i * 3];
+    const sy = tail.seeds[i * 3 + 1];
+    const sz = tail.seeds[i * 3 + 2];
+    const along = k * stretch * (2.2 + (tail === cometTail ? 1.6 : 0.7));
+    const spread = k * k * 0.55;
+    const wob = 0.12 * Math.sin(years * 8 + i);
+    pos[i * 3] = away.x * along + (side.x * sx + up.x * sy) * spread + away.x * wob * sz;
+    pos[i * 3 + 1] = away.y * along + (side.y * sx + up.y * sy) * spread;
+    pos[i * 3 + 2] = away.z * along + (side.z * sx + up.z * sy) * spread + away.z * wob * sz * 0.5;
   }
-
-  // moon around earth
-  const earth = fly.bodies?.get("earth");
-  const moon = fly.bodies?.get("moon");
-  if (earth && moon) {
-    const th = phase / MOON.period;
-    const mr = MOON.dist * (p.planet_scale ?? 1);
-    moon.position.set(
-      earth.position.x + Math.cos(th) * mr,
-      earth.position.y + Math.sin(th * 0.3) * mr * 0.08,
-      earth.position.z + Math.sin(th) * mr
-    );
-    moon.userData.spin = (moon.userData.spin ?? 0) + MOON.spin * ts * dt;
-    if (moon.userData.body) moon.userData.body.rotation.y = moon.userData.spin;
-    if (moon.userData.label) {
-      moon.userData.label.position.set(
-        moon.position.x,
-        moon.position.y + MOON.r * (p.planet_scale ?? 1) + 0.35,
-        moon.position.z
-      );
-    }
-  }
-
-  // asteroid belt slow drift
-  if (fly.belt) {
-    const data = fly.belt.userData.belt;
-    const dummy = fly.belt.userData.dummy;
-    const n = fly.belt.userData.count;
-    const ee = 0.04;
-    for (let i = 0; i < n; i++) {
-      const a = data[i * 4];
-      let ph = data[i * 4 + 1] + dt * ts * (0.08 / Math.sqrt(a / 40));
-      data[i * 4 + 1] = ph;
-      const y = data[i * 4 + 2];
-      const r = keplerRadius(a, ee, ph);
-      dummy.position.set(Math.cos(ph) * r, y, Math.sin(ph) * r);
-      dummy.rotation.x += dt * data[i * 4 + 3] * 0.2;
-      dummy.rotation.y += dt * data[i * 4 + 3] * 0.15;
-      // keep scale from initial — re-read matrix scale is heavy; re-apply from seed
-      const s = 0.04 + seeded(i, 4) * 0.18;
-      dummy.scale.setScalar(s);
-      dummy.updateMatrix();
-      fly.belt.setMatrixAt(i, dummy.matrix);
-    }
-    fly.belt.instanceMatrix.needsUpdate = true;
-  }
-
-  // sun pulse
-  if (fly.sunCorona) {
-    const pulse = 1 + 0.03 * Math.sin(t * 1.7) + 0.015 * Math.sin(t * 4.3);
-    fly.sunCorona.scale.setScalar(pulse);
-    if (fly.sunLight) {
-      fly.sunLight.intensity = (p.sun_power ?? 140) * (0.92 + 0.08 * Math.sin(t * 2.1));
-    }
-  }
+  tail.g.attributes.position.needsUpdate = true;
 }
 
-// ─── free-fly every frame (incl. pause) ─────────────────────────────────────
-export function onFrame(host, dt) {
-  if (!host.camera || !host.domElement) return;
-  // rebind if canvas swapped
-  if (!fly.bound || fly.listeners?.el !== host.domElement) {
-    bindFly(host);
+export function update(t, dt) {
+  const ts = params.time_scale ?? 0.2;
+  const years = t * ts / 25;
+  sunMat.uniforms.uTime.value = t;
+  coronaMat.uniforms.uTime.value = t;
+  sun.rotation.y = t * 0.08;
+  for (const am of atmMats) {
+    if (am.uniforms.uTime) am.uniforms.uTime.value = t;
   }
 
-  const p = host.params;
-  const speed = p.fly_speed ?? 18;
-  const boost = p.boost_mult ?? 3.5;
-  const drag = p.drag ?? 0.94;
-  const keys = fly.keys;
-
-  applyCameraOrientation(host);
-
-  // basis from camera
-  host.camera.getWorldDirection(fly.tmpF);
-  fly.tmpR.crossVectors(fly.tmpF, host.camera.up).normalize();
-  // if looking straight up/down, fall back
-  if (fly.tmpR.lengthSq() < 1e-6) {
-    fly.tmpR.set(1, 0, 0).applyQuaternion(host.camera.quaternion);
-  }
-  fly.tmpU.crossVectors(fly.tmpR, fly.tmpF).normalize();
-
-  let mx = 0;
-  let my = 0;
-  let mz = 0;
-  if (keys.KeyW || keys.ArrowUp) mz += 1;
-  if (keys.KeyS || keys.ArrowDown) mz -= 1;
-  if (keys.KeyD || keys.ArrowRight) mx += 1;
-  if (keys.KeyA || keys.ArrowLeft) mx -= 1;
-  if (keys.Space) my += 1;
-  if (keys.ControlLeft || keys.ControlRight || keys.KeyQ) my -= 1;
-  // also KeyE for up alternate
-  if (keys.KeyE) my += 1;
-
-  const len = Math.hypot(mx, my, mz);
-  if (len > 0) {
-    mx /= len;
-    my /= len;
-    mz /= len;
+  for (const m of movers) {
+    if (m.a > 0) {
+      const M = (years / m.period) * Math.PI * 2 + m.phase;
+      const [x, z] = kepler(m.a, m.e, M);
+      m.body.position.set(x, 0, z);
+    }
+    if (m.spinG) m.spinG.rotation.y = years * m.spin;
+    else if (m.kind === "spin") m.body.rotation.y = years * m.spin;
+    else if (m.kind === "moon") m.body.rotation.y = years * m.spin;
   }
 
-  let sp = speed;
-  if (keys.ShiftLeft || keys.ShiftRight) sp *= boost;
-
-  // acceleration toward wish dir
-  const accel = sp * 3.2;
-  fly.vel.addScaledVector(fly.tmpR, mx * accel * dt);
-  fly.vel.addScaledVector(fly.tmpU, my * accel * dt);
-  fly.vel.addScaledVector(fly.tmpF, mz * accel * dt);
-
-  // drag (frame-rate aware-ish)
-  const d = Math.pow(drag, dt * 60);
-  fly.vel.multiplyScalar(d);
-
-  // cap speed
-  const maxSp = sp * 1.8;
-  if (fly.vel.length() > maxSp) fly.vel.setLength(maxSp);
-
-  host.camera.position.addScaledVector(fly.vel, dt);
-
-  // soft boundary — bounce gently if leaving system
-  const pos = host.camera.position;
-  const lim = 420;
-  if (pos.length() > lim) {
-    pos.setLength(lim * 0.98);
-    fly.vel.multiplyScalar(-0.3);
+  placeBelt(asteroidBelt, years);
+  placeBelt(kuiperBelt, years);
+  if (comet) {
+    updateTail(cometTail, years);
+    updateTail(cometTail2, years);
   }
 
-  // gentle auto starfield rotation for life
-  if (fly.stars) {
-    fly.stars.rotation.y += dt * 0.003;
+  const wpos = windGeo.attributes.position.array;
+  for (let i = 0; i < WIND_N; i++) {
+    const s = windSeed[i];
+    s.rad += dt * s.sp * (0.4 + ts * 0.04);
+    if (s.rad > 22) s.rad = 1.35 + h3(i, t, 1) * 0.4;
+    wpos[i * 3] = s.dir.x * s.rad;
+    wpos[i * 3 + 1] = s.dir.y * s.rad;
+    wpos[i * 3 + 2] = s.dir.z * s.rad;
+  }
+  windGeo.attributes.position.needsUpdate = true;
+
+  meteor.life -= dt;
+  if (meteor.life <= 0 && Math.random() < dt * 0.22) {
+    const th = Math.random() * Math.PI * 2;
+    const ph = (Math.random() - 0.5) * 0.7;
+    meteor.from.set(Math.cos(th) * 14, 3 + Math.random() * 4, Math.sin(th) * 14);
+    meteor.vel.set(-Math.sin(th) * 9, -2 - Math.random() * 3, Math.cos(th) * 9);
+    meteor.life = 0.7 + Math.random() * 0.5;
+    meteor.t = 0;
+  }
+  if (meteor.life > 0) {
+    meteor.t += dt;
+    const a = meteor.from.clone().addScaledVector(meteor.vel, meteor.t);
+    const b = a.clone().addScaledVector(meteor.vel, -0.18);
+    const arr = meteor.line.geometry.attributes.position.array;
+    arr[0] = a.x;
+    arr[1] = a.y;
+    arr[2] = a.z;
+    arr[3] = b.x;
+    arr[4] = b.y;
+    arr[5] = b.z;
+    meteor.line.geometry.attributes.position.needsUpdate = true;
+    meteor.line.material.opacity = Math.min(1, meteor.life * 2) * 0.85;
+  } else {
+    meteor.line.material.opacity = 0;
   }
 }

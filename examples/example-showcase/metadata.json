@@ -1,6 +1,6 @@
 {
   "title": "Example showcase: solar system",
-  "description": "Flashy high-detail free-fly solar system from the Sun through Neptune \u2014 Earth's Moon, Saturn's rings, an asteroid belt, and a dense starfield.\n\n**Keyboard free-flight.** Click the canvas to capture the pointer, then fly with **WASD** thrust, **Space** / **Ctrl** (or **E** / **Q**) climb and sink, **mouse** look, and **Shift** boost. **C** snaps the camera near Earth. Host **R** and **/** stay reserved.\n\nOrbits and spins use the host sim clock (**Play/Pause** freezes them). Flight stays live while paused. From the cards, tune orbit time scale, eccentricity, fly feel, sun and corona, star and asteroid density, mesh quality, and which bodies are shown.\n\nDistances are compressed for flyability (not true AU scale).",
+  "description": "High-detail showcase of a compressed solar system: Sol, eight planets, Pluto, major moons, Saturn/Uranus rings, asteroid + Kuiper belts, a Halley-class comet, and a keyboard free-fly camera (WASD / QE / mouse). Distances and radii are artistic — not to scale — so you can read surfaces, atmospheres, and ring structure while flying. Playback drives orbital time; pause freezes the clock but not the craft.",
   "tags": [
     "example",
     "showcase",
@@ -8,10 +8,9 @@
     "3d",
     "astronomy"
   ],
-  "dimensions": 3,
   "attribution": {
     "author": "igoakulov",
     "model": "grok-4.5-high",
-    "prompt": "With the Scenie skill, make a flashy high-detail solar system where I can fly with keyboard. Go all out."
+    "prompt": "Make a flashy high-detail solar system where I can fly with keyboard. Go all out."
   }
 }

@@ -1,6 +1,3 @@
-/** Spatial dimensions for camera/runtime. Default 3 when omitted. */
-export type SceneDimensions = 2 | 3;
-
 export interface SceneAttribution {
   model?: string;
   author?: string;
@@ -11,13 +8,11 @@ export interface SceneMetadata {
   title: string;
   description: string;
   tags: string[];
-  /** Always set after parse (default 3). */
-  dimensions: SceneDimensions;
   attribution?: SceneAttribution;
   [key: string]: unknown;
 }
 
-/** Writable control types — values land in flat `host.params[key]`. */
+/** Writable control types — values land in the flat params bag. */
 export type WritableParamType =
   | "number"
   | "boolean"
@@ -47,7 +42,7 @@ export interface NumberParamField {
   max: number;
   default: number;
   step?: number;
-  /** Optional display unit (e.g. "m", "°", "AU") — not part of host.params. */
+  /** Optional display unit (e.g. "m", "°", "AU") — not in the params bag. */
   unit?: string;
 }
 
@@ -139,6 +134,8 @@ export interface AppConfig {
 export interface ValidationIssue {
   path: string;
   message: string;
+  /** Omit = error. Warnings do not fail validate or block show. */
+  level?: "error" | "warning";
 }
 
 export interface SceneValidationResult {

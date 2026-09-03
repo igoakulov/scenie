@@ -1,523 +1,327 @@
 import * as THREE from "three";
+import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
-export const runtime = { lights: true, helpers: false, camera: true, playback: true };
+const scene = new THREE.Scene();
 
-const DEG = Math.PI / 180;
-const BOB_R = 0.045;
-const PIVOT = new THREE.Vector3(0, 0.55, 0);
+const L = Number(params.L ?? 0.8);
+const m = Number(params.m ?? 0.25);
+const theta0Deg = Number(params.theta0 ?? 30);
+const g = Number(params.g ?? 9.8);
+const theta0 = (theta0Deg * Math.PI) / 180;
+const mode = params.mode ?? "animate";
+const overlays = new Set(params.overlays ?? ["path", "forces", "energy", "height"]);
 
-function heightDrop(L, theta0Rad) {
-  return L * (1 - Math.cos(theta0Rad));
+const hDrop = L * (1 - Math.cos(theta0));
+const vBottom = Math.sqrt(Math.max(0, 2 * g * hDrop));
+const TBottom = m * (g + (vBottom * vBottom) / L);
+const ETot = m * g * hDrop;
+const mg = m * g;
+
+const pivot = new THREE.Vector3(0, 0, 0);
+const bobR = 0.05 * Math.cbrt(Math.max(m, 0.05) / 0.25);
+const arcR = Math.min(0.22, 0.28 * L);
+
+const col = {
+  support: 0x8b95a3,
+  string: 0x9eb0c2,
+  bob: 0x3d8bfd,
+  ghost: 0x7aa7e0,
+  path: 0x5b8fd6,
+  vertical: 0x6a7380,
+  angle: 0xf0a05a,
+  vel: 0x3dd68c,
+  tension: 0xff6b4a,
+  weight: 0xc084fc,
+  pe: 0x5b9dff,
+  ke: 0xff9f43,
+  height: 0x7dcea0,
+  mark: 0x8b95a3,
+};
+
+function label(text) {
+  const el = document.createElement("div");
+  el.textContent = text;
+  const obj = new CSS2DObject(el);
+  scene.add(obj);
+  return { el, obj };
 }
 
-function speedAtBottom(L, theta0Rad, g) {
-  // mgh = ½mv²  with  h = L(1 − cos θ₀)
-  return Math.sqrt(2 * g * heightDrop(L, theta0Rad));
+function setLabel(item, text, x, y, on) {
+  item.el.textContent = on ? text : "";
+  item.obj.position.set(x, y, 0.04);
+  item.obj.visible = Boolean(on && text);
 }
 
-function tensionAtBottom(m, L, theta0Rad, g) {
-  // T − mg = mv²/L  ⇒  T = m(g + v²/L) = mg(3 − 2 cos θ₀)
-  const v2 = 2 * g * heightDrop(L, theta0Rad);
-  return m * (g + v2 / L);
+function lineGeom(points) {
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  return geo;
 }
 
-function periodApprox(L, g, theta0Rad) {
-  // large-angle approx (first correction)
-  const K = 1 + (1 / 16) * theta0Rad * theta0Rad;
-  return 2 * Math.PI * Math.sqrt(L / g) * K;
+function addLine(points, material) {
+  const mesh = new THREE.Line(lineGeom(points), material);
+  if (material.isLineDashedMaterial) mesh.computeLineDistances();
+  scene.add(mesh);
+  return mesh;
 }
 
-function bobPos(theta, L) {
-  // θ = 0 is down (vertical). θ > 0 swings toward +X.
-  return new THREE.Vector3(
-    PIVOT.x + L * Math.sin(theta),
-    PIVOT.y - L * Math.cos(theta),
-    0
+const supportMat = new THREE.MeshBasicMaterial({ color: col.support });
+const support = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.04), supportMat);
+support.position.set(0, 0.01, 0);
+scene.add(support);
+
+const pivotMesh = new THREE.Mesh(new THREE.SphereGeometry(0.028, 16, 12), supportMat);
+scene.add(pivotMesh);
+
+const vertical = addLine(
+  [new THREE.Vector3(0, 0.02, -0.02), new THREE.Vector3(0, -L - 0.08, -0.02)],
+  new THREE.LineDashedMaterial({ color: col.vertical, dashSize: 0.045, gapSize: 0.028, depthTest: false }),
+);
+
+const pathCurve = new THREE.EllipseCurve(0, 0, L, L, -Math.PI / 2 - theta0, -Math.PI / 2 + theta0, false, 0);
+const pathLine = addLine(
+  pathCurve.getPoints(64),
+  new THREE.LineBasicMaterial({ color: col.path, transparent: true, opacity: 0.45, depthTest: false }),
+);
+pathLine.visible = overlays.has("path");
+
+const startPos = new THREE.Vector3(L * Math.sin(theta0), -L * Math.cos(theta0), 0);
+const ghostString = addLine(
+  [pivot.clone(), startPos.clone()],
+  new THREE.LineDashedMaterial({ color: col.ghost, dashSize: 0.04, gapSize: 0.025, depthTest: false }),
+);
+const ghostBob = new THREE.Mesh(
+  new THREE.SphereGeometry(bobR, 16, 12),
+  new THREE.MeshBasicMaterial({ color: col.ghost, transparent: true, opacity: 0.28, depthTest: false }),
+);
+ghostBob.position.copy(startPos);
+scene.add(ghostBob);
+
+const bottomMark = addLine(
+  [new THREE.Vector3(-0.07, -L, -0.01), new THREE.Vector3(0.07, -L, -0.01)],
+  new THREE.LineBasicMaterial({ color: col.mark, depthTest: false }),
+);
+
+const hTop = -L * Math.cos(theta0);
+const hX = startPos.x + bobR + 0.08;
+const heightGroup = new THREE.Group();
+const heightMat = new THREE.LineBasicMaterial({ color: col.height, depthTest: false });
+heightGroup.add(new THREE.Line(lineGeom([new THREE.Vector3(hX - 0.04, hTop, 0), new THREE.Vector3(hX + 0.04, hTop, 0)]), heightMat));
+heightGroup.add(new THREE.Line(lineGeom([new THREE.Vector3(hX, hTop, 0), new THREE.Vector3(hX, -L, 0)]), heightMat));
+heightGroup.add(new THREE.Line(lineGeom([new THREE.Vector3(hX - 0.04, -L, 0), new THREE.Vector3(hX + 0.04, -L, 0)]), heightMat));
+scene.add(heightGroup);
+heightGroup.visible = overlays.has("height");
+
+const stringGeo = new THREE.BufferGeometry();
+stringGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+const stringLine = new THREE.Line(stringGeo, new THREE.LineBasicMaterial({ color: col.string, depthTest: false }));
+scene.add(stringLine);
+
+const bob = new THREE.Mesh(new THREE.SphereGeometry(bobR, 20, 16), new THREE.MeshBasicMaterial({ color: col.bob }));
+scene.add(bob);
+
+const angleLine = new THREE.Line(
+  new THREE.BufferGeometry(),
+  new THREE.LineBasicMaterial({ color: col.angle, depthTest: false }),
+);
+scene.add(angleLine);
+
+const velArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 0.2, col.vel, 0.07, 0.045);
+const tArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(), 0.2, col.tension, 0.07, 0.045);
+const wArrow = new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), new THREE.Vector3(), 0.2, col.weight, 0.07, 0.045);
+scene.add(velArrow, tArrow, wArrow);
+
+const energyX = L + 0.42;
+const barH = L;
+const barW = 0.07;
+const energyBase = -L;
+const trackMat = new THREE.LineBasicMaterial({ color: col.mark, transparent: true, opacity: 0.7, depthTest: false });
+const peMat = new THREE.MeshBasicMaterial({ color: col.pe, depthTest: false });
+const keMat = new THREE.MeshBasicMaterial({ color: col.ke, depthTest: false });
+
+function makeBar(mat, x) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(barW, 1, 0.02), mat);
+  mesh.position.x = x;
+  mesh.position.z = -0.01;
+  scene.add(mesh);
+  return mesh;
+}
+
+const peBar = makeBar(peMat, energyX);
+const keBar = makeBar(keMat, energyX + 0.11);
+const peTrack = addLine(
+  [
+    new THREE.Vector3(energyX - barW / 2, energyBase, 0),
+    new THREE.Vector3(energyX + barW / 2, energyBase, 0),
+    new THREE.Vector3(energyX + barW / 2, energyBase + barH, 0),
+    new THREE.Vector3(energyX - barW / 2, energyBase + barH, 0),
+    new THREE.Vector3(energyX - barW / 2, energyBase, 0),
+  ],
+  trackMat,
+);
+const keTrack = addLine(
+  [
+    new THREE.Vector3(energyX + 0.11 - barW / 2, energyBase, 0),
+    new THREE.Vector3(energyX + 0.11 + barW / 2, energyBase, 0),
+    new THREE.Vector3(energyX + 0.11 + barW / 2, energyBase + barH, 0),
+    new THREE.Vector3(energyX + 0.11 - barW / 2, energyBase + barH, 0),
+    new THREE.Vector3(energyX + 0.11 - barW / 2, energyBase, 0),
+  ],
+  trackMat,
+);
+const energyOn = overlays.has("energy");
+peBar.visible = keBar.visible = peTrack.visible = keTrack.visible = energyOn;
+
+const labSupport = label("fixed support");
+const labL = label("$L$");
+const labTheta = label("$\\theta$");
+const labH = label("$h$");
+const labBottom = label("bottom");
+const labV = label("$\\vec v$");
+const labT = label("$T$");
+const labW = label("$mg$");
+const labPE = label("$U$");
+const labKE = label("$K$");
+const labLive = label("");
+const labAns = label("");
+
+setLabel(labSupport, "fixed support", 0.28, 0.07, true);
+setLabel(labBottom, "bottom", 0.16, -L - 0.02, true);
+setLabel(labH, `$h=${hDrop.toFixed(3)}\\,\\mathrm{m}$`, hX + 0.16, (hTop - L) / 2, overlays.has("height"));
+setLabel(
+  labAns,
+  `$v_{\\mathrm{bottom}}=${vBottom.toFixed(3)}\\,\\mathrm{m/s}$\\quad $T_{\\mathrm{bottom}}=${TBottom.toFixed(3)}\\,\\mathrm{N}$`,
+  0.15,
+  0.22,
+  true,
+);
+
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+camera.position.set(0.38, -0.34, 3.3);
+camera.lookAt(0.38, -0.34, 0);
+
+let theta = theta0;
+let omega = 0;
+if (mode === "at bottom") {
+  theta = 0;
+  omega = -vBottom / L;
+} else if (mode === "at release") {
+  theta = theta0;
+  omega = 0;
+}
+
+function accel(th) {
+  return -(g / L) * Math.sin(th);
+}
+
+function rk4(h) {
+  const k1t = omega;
+  const k1o = accel(theta);
+  const k2t = omega + 0.5 * h * k1o;
+  const k2o = accel(theta + 0.5 * h * k1t);
+  const k3t = omega + 0.5 * h * k2o;
+  const k3o = accel(theta + 0.5 * h * k2t);
+  const k4t = omega + h * k3o;
+  const k4o = accel(theta + h * k3t);
+  theta += (h / 6) * (k1t + 2 * k2t + 2 * k3t + k4t);
+  omega += (h / 6) * (k1o + 2 * k2o + 2 * k3o + k4o);
+}
+
+function setArrow(helper, origin, dir, length, on) {
+  const len = Math.max(length, 0);
+  helper.visible = Boolean(on && len > 1e-4);
+  if (!helper.visible) return;
+  helper.position.copy(origin);
+  helper.setDirection(dir);
+  helper.setLength(len, Math.min(0.08, 0.28 * len), Math.min(0.05, 0.18 * len));
+}
+
+function setBar(mesh, x, height) {
+  const h = Math.max(height, 1e-4);
+  mesh.scale.set(1, h, 1);
+  mesh.position.set(x, energyBase + h / 2, -0.01);
+  mesh.visible = energyOn && height > 1e-4;
+}
+
+function applyPose() {
+  const s = Math.sin(theta);
+  const c = Math.cos(theta);
+  const bobPos = new THREE.Vector3(L * s, -L * c, 0);
+  const arr = stringGeo.attributes.position.array;
+  arr[0] = 0;
+  arr[1] = 0;
+  arr[2] = 0;
+  arr[3] = bobPos.x;
+  arr[4] = bobPos.y;
+  arr[5] = bobPos.z;
+  stringGeo.attributes.position.needsUpdate = true;
+  stringGeo.computeBoundingSphere();
+  bob.position.copy(bobPos);
+
+  const a0 = -Math.PI / 2;
+  const a1 = -Math.PI / 2 + theta;
+  const curve = new THREE.EllipseCurve(0, 0, arcR, arcR, Math.min(a0, a1), Math.max(a0, a1), false, 0);
+  angleLine.geometry.dispose();
+  angleLine.geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(28));
+  angleLine.visible = Math.abs(theta) > 0.02;
+
+  const speed = Math.abs(omega * L);
+  const U = m * g * L * (1 - c);
+  const K = Math.max(0, ETot - U);
+  const T = m * (g * c + (speed * speed) / L);
+
+  const vDir = new THREE.Vector3(c, s, 0);
+  if (omega < 0) vDir.multiplyScalar(-1);
+  if (vDir.lengthSq() > 0) vDir.normalize();
+  const vLen = Math.min(0.5, 0.12 + 0.22 * speed);
+  setArrow(velArrow, bobPos, vDir, vLen, speed > 0.04);
+
+  const showF = overlays.has("forces");
+  const tDir = new THREE.Vector3(-s, c, 0);
+  const fScale = 0.13;
+  setArrow(tArrow, bobPos, tDir, fScale * T, showF);
+  setArrow(wArrow, bobPos, new THREE.Vector3(0, -1, 0), fScale * mg, showF);
+
+  setBar(peBar, energyX, ETot > 1e-9 ? (U / ETot) * barH : 0);
+  setBar(keBar, energyX + 0.11, ETot > 1e-9 ? (K / ETot) * barH : 0);
+
+  const mid = new THREE.Vector3(0.5 * L * s, -0.5 * L * c, 0);
+  setLabel(labL, `$L=${L.toFixed(2)}\\,\\mathrm{m}$`, mid.x + 0.1 * c, mid.y + 0.1 * s, true);
+  setLabel(labTheta, `$\\theta=${((theta * 180) / Math.PI).toFixed(1)}^\\circ$`, arcR * Math.sin(theta * 0.55) + 0.08, -arcR * Math.cos(theta * 0.55), Math.abs(theta) > 0.02);
+  const vTip = bobPos.clone().addScaledVector(vDir, vLen + 0.04);
+  setLabel(labV, `$v=${speed.toFixed(2)}\\,\\mathrm{m/s}$`, vTip.x, vTip.y, speed > 0.05);
+  setLabel(labT, `$T=${T.toFixed(2)}\\,\\mathrm{N}$`, bobPos.x - 0.18 * s, bobPos.y + 0.18 * c, showF);
+  setLabel(labW, "$mg$", bobPos.x + 0.12, bobPos.y - fScale * mg - 0.06, showF);
+  setLabel(labPE, `$U=${U.toFixed(3)}\\,\\mathrm{J}$`, energyX, energyBase + barH + 0.08, energyOn);
+  setLabel(labKE, `$K=${K.toFixed(3)}\\,\\mathrm{J}$`, energyX + 0.22, energyBase + barH + 0.08, energyOn);
+
+  const place =
+    Math.abs(theta - theta0) < 0.03 && Math.abs(omega) < 0.08
+      ? "at release ($v=0$)"
+      : Math.abs(theta) < 0.04
+        ? "at bottom"
+        : "swinging";
+  setLabel(
+    labLive,
+    `$\\theta=${((theta * 180) / Math.PI).toFixed(1)}^\\circ$\\quad $v=${speed.toFixed(2)}\\,\\mathrm{m/s}$\\quad $T=${T.toFixed(2)}\\,\\mathrm{N}$\\quad ${place}`,
+    0.2,
+    -L - 0.2,
+    true,
   );
 }
 
-function makeArc(radius, a0, a1, segs, color, yLift = 0) {
-  const pts = [];
-  for (let i = 0; i <= segs; i++) {
-    const a = a0 + (a1 - a0) * (i / segs);
-    // polar angle from downward vertical, in XY
-    pts.push(new THREE.Vector3(
-      PIVOT.x + radius * Math.sin(a),
-      PIVOT.y - radius * Math.cos(a) + yLift,
-      0
-    ));
-  }
-  const geo = new THREE.BufferGeometry().setFromPoints(pts);
-  return new THREE.Line(geo, new THREE.LineBasicMaterial({ color }));
-}
+applyPose();
 
-function dashedLine(a, b, color) {
-  const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
-  const mat = new THREE.LineDashedMaterial({
-    color,
-    dashSize: 0.04,
-    gapSize: 0.025,
-  });
-  const line = new THREE.Line(geo, mat);
-  line.computeLineDistances();
-  return line;
-}
-
-export function setup(host) {
-  const p = host.params;
-  const L = p.L ?? 0.8;
-  const m = p.m ?? 0.25;
-  const theta0Deg = p.theta0 ?? 30;
-  const g = p.g ?? 9.8;
-  const theta0 = theta0Deg * DEG;
-  const showEnergy = p.show_energy !== false;
-  const showHeight = p.show_height !== false;
-  const showForces = p.show_forces !== false;
-  const showTrail = p.show_trail !== false;
-
-  const h = heightDrop(L, theta0);
-  const vBot = speedAtBottom(L, theta0, g);
-  const TBot = tensionAtBottom(m, L, theta0, g);
-
-  // store for update + labels
-  host.root.userData.sim = {
-    L,
-    m,
-    g,
-    theta0,
-    theta: theta0,
-    omega: 0,
-    vBot,
-    TBot,
-    h,
-    showForces,
-    showTrail,
-    trail: [],
-    maxTrail: 80,
-  };
-
-  // pivot block
-  const pivotMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.14, 0.06, 0.06),
-    new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.3, roughness: 0.5 })
-  );
-  pivotMesh.position.copy(PIVOT).add(new THREE.Vector3(0, 0.03, 0));
-  pivotMesh.name = "pivot";
-  host.root.add(pivotMesh);
-
-  const pivotPin = new THREE.Mesh(
-    new THREE.SphereGeometry(0.02, 12, 12),
-    new THREE.MeshStandardMaterial({ color: 0x334155 })
-  );
-  pivotPin.position.copy(PIVOT);
-  host.root.add(pivotPin);
-
-  // string
-  const releasePos = bobPos(theta0, L);
-  const stringGeo = new THREE.BufferGeometry().setFromPoints([PIVOT.clone(), releasePos.clone()]);
-  const string = new THREE.Line(
-    stringGeo,
-    new THREE.LineBasicMaterial({ color: 0x1e293b, linewidth: 2 })
-  );
-  string.name = "string";
-  host.root.add(string);
-
-  // bob
-  const bob = new THREE.Mesh(
-    new THREE.SphereGeometry(BOB_R, 24, 24),
-    new THREE.MeshStandardMaterial({ color: 0xf97316, metalness: 0.15, roughness: 0.45 })
-  );
-  bob.position.copy(releasePos);
-  bob.name = "bob";
-  host.root.add(bob);
-
-  // equilibrium vertical (dashed)
-  const bottomPos = bobPos(0, L);
-  host.root.add(dashedLine(PIVOT.clone(), bottomPos.clone(), 0x94a3b8));
-
-  // release ray (faint)
-  host.root.add(
-    new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([PIVOT.clone(), releasePos.clone()]),
-      new THREE.LineBasicMaterial({ color: 0xcbd5e1, transparent: true, opacity: 0.5 })
-    )
-  );
-
-  // angle arc near pivot
-  const arcR = Math.min(0.22, L * 0.28);
-  host.root.add(makeArc(arcR, 0, theta0, 24, 0x0ea5e9));
-
-  const angLabel = new THREE.Object3D();
-  const midA = theta0 / 2;
-  angLabel.position.set(
-    PIVOT.x + (arcR + 0.08) * Math.sin(midA),
-    PIVOT.y - (arcR + 0.08) * Math.cos(midA),
-    0
-  );
-  angLabel.userData.annotation = `$\\theta_0 = ${theta0Deg}^\\circ$`;
-  angLabel.name = "theta0-label";
-  host.root.add(angLabel);
-
-  // height drop graphic: horizontal from release bob to vertical line, vertical segment h
-  if (showHeight) {
-    const dropTop = new THREE.Vector3(0, releasePos.y, 0); // on vertical axis at release height
-    const dropBot = bottomPos.clone();
-    host.root.add(dashedLine(releasePos.clone(), dropTop.clone(), 0xa78bfa));
-    host.root.add(
-      new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([dropTop, dropBot]),
-        new THREE.LineBasicMaterial({ color: 0x8b5cf6 })
-      )
-    );
-    // small end caps
-    const cap = (y) => {
-      const g = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(-0.04, y, 0),
-        new THREE.Vector3(0.04, y, 0),
-      ]);
-      return new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x8b5cf6 }));
-    };
-    host.root.add(cap(dropTop.y));
-    host.root.add(cap(dropBot.y));
-
-    const hLab = new THREE.Object3D();
-    hLab.position.set(0.12, (dropTop.y + dropBot.y) / 2, 0);
-    hLab.userData.annotation = `$h = L(1-\\cos\\theta_0) = ${h.toFixed(3)}\\,\\mathrm{m}$`;
-    hLab.name = "h-label";
-    host.root.add(hLab);
-
-    const relLab = new THREE.Object3D();
-    relLab.position.copy(releasePos).add(new THREE.Vector3(0.12, 0.06, 0));
-    relLab.userData.annotation = "release (rest)";
-    host.root.add(relLab);
-  }
-
-  // bottom marker
-  const botMark = new THREE.Mesh(
-    new THREE.RingGeometry(BOB_R * 1.15, BOB_R * 1.35, 32),
-    new THREE.MeshBasicMaterial({ color: 0x22c55e, side: THREE.DoubleSide })
-  );
-  botMark.position.copy(bottomPos);
-  botMark.name = "bottom-ring";
-  host.root.add(botMark);
-
-  const botLab = new THREE.Object3D();
-  botLab.position.copy(bottomPos).add(new THREE.Vector3(0.14, -0.08, 0));
-  botLab.userData.annotation = "bottom";
-  botLab.name = "bottom-label";
-  host.root.add(botLab);
-
-  // energy readout (static formula board near top-left of content)
-  if (showEnergy) {
-    const e1 = new THREE.Object3D();
-    e1.position.set(-0.95, 0.35, 0);
-    e1.userData.annotation =
-      `$\\Delta E=0:\\; mgh = \\tfrac12 mv^2$`;
-    e1.name = "energy-1";
-    host.root.add(e1);
-
-    const e2 = new THREE.Object3D();
-    e2.position.set(-0.95, 0.18, 0);
-    e2.userData.annotation =
-      `$v = \\sqrt{2gL(1-\\cos\\theta_0)} = ${vBot.toFixed(3)}\\,\\mathrm{m/s}$`;
-    e2.name = "energy-2";
-    host.root.add(e2);
-
-    const e3 = new THREE.Object3D();
-    e3.position.set(-0.95, 0.01, 0);
-    e3.userData.annotation =
-      `$T = m\\!\\left(g + \\dfrac{v^2}{L}\\right) = ${TBot.toFixed(3)}\\,\\mathrm{N}$`;
-    e3.name = "energy-3";
-    host.root.add(e3);
-  }
-
-  // force / velocity arrows at bottom (reference solution state)
-  if (showForces) {
-    const arrowLenV = Math.min(0.35, 0.12 + 0.1 * vBot);
-    // velocity is horizontal at bottom (to +X when swinging from +θ)
-    const vDir = new THREE.Vector3(1, 0, 0);
-    const vArrow = new THREE.ArrowHelper(
-      vDir,
-      bottomPos.clone().add(new THREE.Vector3(0, 0, 0.01)),
-      arrowLenV,
-      0x2563eb,
-      0.06,
-      0.04
-    );
-    vArrow.name = "v-arrow";
-    host.root.add(vArrow);
-
-    const vLab = new THREE.Object3D();
-    vLab.position.copy(bottomPos).add(new THREE.Vector3(arrowLenV + 0.08, 0.06, 0));
-    vLab.userData.annotation = `$\\vec v$`;
-    host.root.add(vLab);
-
-    // weight mg down
-    const wLen = 0.18;
-    const wArrow = new THREE.ArrowHelper(
-      new THREE.Vector3(0, -1, 0),
-      bottomPos.clone(),
-      wLen,
-      0xef4444,
-      0.05,
-      0.035
-    );
-    wArrow.name = "w-arrow";
-    host.root.add(wArrow);
-
-    const wLab = new THREE.Object3D();
-    wLab.position.copy(bottomPos).add(new THREE.Vector3(-0.14, -wLen * 0.55, 0));
-    wLab.userData.annotation = `$mg$`;
-    host.root.add(wLab);
-
-    // tension up along string (at bottom: +Y)
-    const tLen = 0.18 * (TBot / (m * g));
-    const tArrow = new THREE.ArrowHelper(
-      new THREE.Vector3(0, 1, 0),
-      bottomPos.clone(),
-      Math.min(0.45, tLen),
-      0x16a34a,
-      0.05,
-      0.035
-    );
-    tArrow.name = "t-arrow";
-    host.root.add(tArrow);
-
-    const tLab = new THREE.Object3D();
-    tLab.position.copy(bottomPos).add(new THREE.Vector3(0.12, Math.min(0.45, tLen) * 0.6, 0));
-    tLab.userData.annotation = `$\\vec T$`;
-    host.root.add(tLab);
-
-    const nLab = new THREE.Object3D();
-    nLab.position.copy(bottomPos).add(new THREE.Vector3(0.35, -0.22, 0));
-    nLab.userData.annotation = `$T - mg = \\dfrac{mv^2}{L}$`;
-    host.root.add(nLab);
-  }
-
-  // live readouts (updated in update)
-  const liveV = new THREE.Object3D();
-  liveV.position.set(0.55, 0.45, 0);
-  liveV.userData.annotation = `$|\\vec v| = 0.000\\,\\mathrm{m/s}$`;
-  liveV.name = "live-v";
-  host.root.add(liveV);
-
-  const liveTh = new THREE.Object3D();
-  liveTh.position.set(0.55, 0.28, 0);
-  liveTh.userData.annotation = `$\\theta = ${theta0Deg.toFixed(1)}^\\circ$`;
-  liveTh.name = "live-theta";
-  host.root.add(liveTh);
-
-  const liveT = new THREE.Object3D();
-  liveT.position.set(0.55, 0.11, 0);
-  // T(θ) = mg cosθ + m L ω²  (radial; toward pivot positive for tension)
-  const T0 = m * g * Math.cos(theta0); // rest at release: ω=0
-  liveT.userData.annotation = `$T(\\theta) = ${T0.toFixed(3)}\\,\\mathrm{N}$`;
-  liveT.name = "live-T";
-  host.root.add(liveT);
-
-  // trail group
-  const trailGroup = new THREE.Group();
-  trailGroup.name = "trail";
-  host.root.add(trailGroup);
-
-  // length annotation
-  const Llab = new THREE.Object3D();
-  Llab.position.set(
-    PIVOT.x + (L / 2) * Math.sin(theta0) + 0.1,
-    PIVOT.y - (L / 2) * Math.cos(theta0),
-    0
-  );
-  Llab.userData.annotation = `$L = ${L.toFixed(2)}\\,\\mathrm{m}$`;
-  Llab.name = "L-label";
-  host.root.add(Llab);
-
-  // scale scene slightly so L~0.8 fits nicely — already positioned with PIVOT
-  // frame: ground hint
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.4, 0.02),
-    new THREE.MeshBasicMaterial({ color: 0xe2e8f0 })
-  );
-  ground.position.set(0, bottomPos.y - 0.18, -0.02);
-  host.root.add(ground);
-
-  // initial camera framing hint via agent camera (stripped after setup — first mount only)
-  const cam = new THREE.PerspectiveCamera();
-  cam.position.set(0, 0.05, 5);
-  cam.lookAt(0, 0.05, 0);
-  host.root.add(cam);
-}
-
-export function update(host, t, dt) {
-  const sim = host.root.userData.sim;
-  if (!sim) return;
-
-  const { L, m, g, theta0 } = sim;
-  // integrate θ'' = −(g/L) sin θ  (no damping)
-  // semi-implicit Euler is stable enough for this
-  let { theta, omega } = sim;
-  const steps = Math.max(1, Math.ceil(dt / (1 / 240)));
-  const h = dt / steps;
-  for (let i = 0; i < steps; i++) {
-    const alpha = -(g / L) * Math.sin(theta);
-    omega += alpha * h;
-    theta += omega * h;
-  }
-  // soft clamp energy drift: if past release amplitude, reflect lightly
-  if (Math.abs(theta) > theta0 + 0.02 && Math.sign(theta) === Math.sign(omega)) {
-    // project back onto energy shell
-    const c = Math.min(1, Math.max(-1, (Math.cos(theta0) + (omega * omega * L) / (2 * g))));
-    // leave numerical; only flip if wildly overshoot
-    if (Math.abs(theta) > theta0 * 1.15) {
-      omega = -omega * 0.999;
-      theta = Math.sign(theta) * theta0;
+export function update(t, dt) {
+  if (mode === "animate") {
+    let remain = Math.min(Math.max(dt, 0), 0.05);
+    const h = 1 / 240;
+    while (remain > 1e-8) {
+      const step = Math.min(h, remain);
+      rk4(step);
+      remain -= step;
     }
   }
-  sim.theta = theta;
-  sim.omega = omega;
-
-  const pos = bobPos(theta, L);
-  const bob = host.root.getObjectByName("bob");
-  const string = host.root.getObjectByName("string");
-  if (bob) bob.position.copy(pos);
-  if (string) {
-    const arr = string.geometry.attributes.position.array;
-    arr[0] = PIVOT.x; arr[1] = PIVOT.y; arr[2] = PIVOT.z;
-    arr[3] = pos.x; arr[4] = pos.y; arr[5] = pos.z;
-    string.geometry.attributes.position.needsUpdate = true;
-  }
-
-  // speed and tension at current angle
-  // energy: ½ m (Lω)² + mg L (1−cosθ) = mg L (1−cosθ₀)
-  const v = Math.abs(L * omega);
-  const T = m * g * Math.cos(theta) + m * L * omega * omega;
-
-  const liveV = host.root.getObjectByName("live-v");
-  if (liveV) {
-    liveV.userData.annotation = `$|\\vec v| = ${v.toFixed(3)}\\,\\mathrm{m/s}$`;
-  }
-  const liveTh = host.root.getObjectByName("live-theta");
-  if (liveTh) {
-    liveTh.userData.annotation = `$\\theta = ${(theta / DEG).toFixed(1)}^\\circ$`;
-  }
-  const liveT = host.root.getObjectByName("live-T");
-  if (liveT) {
-    liveT.userData.annotation = `$T(\\theta) = ${T.toFixed(3)}\\,\\mathrm{N}$`;
-  }
-
-  // highlight bottom ring when near bottom
-  const ring = host.root.getObjectByName("bottom-ring");
-  if (ring) {
-    const near = Math.abs(theta) < 0.08;
-    ring.material.color.setHex(near ? 0xfacc15 : 0x22c55e);
-    ring.scale.setScalar(near ? 1.25 : 1);
-  }
-
-  // trail
-  if (sim.showTrail) {
-    const trailGroup = host.root.getObjectByName("trail");
-    if (trailGroup) {
-      sim.trail.push(pos.clone());
-      if (sim.trail.length > sim.maxTrail) sim.trail.shift();
-      while (trailGroup.children.length) {
-        const c = trailGroup.children.pop();
-        c.geometry?.dispose?.();
-        c.material?.dispose?.();
-      }
-      if (sim.trail.length > 1) {
-        const geo = new THREE.BufferGeometry().setFromPoints(sim.trail);
-        const line = new THREE.Line(
-          geo,
-          new THREE.LineBasicMaterial({ color: 0xfdba74, transparent: true, opacity: 0.7 })
-        );
-        trailGroup.add(line);
-      }
-    }
-  }
+  applyPose();
 }
 
-export function params() {
-  return [
-    {
-      type: "card",
-      title: "Pendulum",
-      children: [
-        {
-          type: "note",
-          text: "Released from rest at θ₀. Play to swing. At the bottom, energy fixes v; radial force balance fixes T.",
-        },
-        { key: "L", type: "number", label: "Length L", min: 0.3, max: 1.5, step: 0.05, default: 0.8, unit: "m" },
-        { key: "m", type: "number", label: "Mass m", min: 0.05, max: 2, step: 0.05, default: 0.25, unit: "kg" },
-        { key: "theta0", type: "number", label: "Release angle θ₀", min: 5, max: 80, step: 1, default: 30, unit: "°" },
-        { key: "g", type: "number", label: "Gravity g", min: 1, max: 20, step: 0.1, default: 9.8, unit: "m/s²" },
-        {
-          type: "label",
-          label: "Height drop h",
-          value: (q) => {
-            const h = heightDrop(q.L ?? 0.8, (q.theta0 ?? 30) * DEG);
-            return `${h.toFixed(4)} m`;
-          },
-        },
-        {
-          type: "label",
-          label: "v at bottom",
-          value: (q) => {
-            const v = speedAtBottom(q.L ?? 0.8, (q.theta0 ?? 30) * DEG, q.g ?? 9.8);
-            return `${v.toFixed(4)} m/s`;
-          },
-        },
-        {
-          type: "label",
-          label: "T at bottom",
-          value: (q) => {
-            const T = tensionAtBottom(q.m ?? 0.25, q.L ?? 0.8, (q.theta0 ?? 30) * DEG, q.g ?? 9.8);
-            return `${T.toFixed(4)} N`;
-          },
-        },
-      ],
-    },
-    {
-      type: "card",
-      title: "Display",
-      children: [
-        { key: "show_height", type: "boolean", label: "Show height h", default: true },
-        { key: "show_energy", type: "boolean", label: "Show energy solution", default: true },
-        { key: "show_forces", type: "boolean", label: "Forces at bottom", default: true },
-        { key: "show_trail", type: "boolean", label: "Motion trail", default: true },
-        {
-          type: "label",
-          label: "Period (approx)",
-          value: (q) => {
-            const T = periodApprox(q.L ?? 0.8, q.g ?? 9.8, (q.theta0 ?? 30) * DEG);
-            return `${T.toFixed(3)} s`;
-          },
-        },
-      ],
-    },
-    {
-      type: "card",
-      title: "How to solve",
-      children: [
-        {
-          type: "note",
-          text: "1) Height lost: h = L(1 − cos θ₀). PE → KE: mgh = ½mv² ⇒ v = √(2gh).",
-        },
-        {
-          type: "note",
-          text: "2) At bottom, net radial force is centripetal: T − mg = mv²/L ⇒ T = m(g + v²/L).",
-        },
-        {
-          type: "note",
-          text: "With defaults: h ≈ 0.1072 m, v ≈ 1.450 m/s, T ≈ 3.107 N.",
-        },
-      ],
-    },
-  ];
-}
-
-export function validateParams(params) {
-  const issues = [];
-  if ((params.L ?? 0) <= 0) issues.push({ key: "L", message: "L must be positive" });
-  if ((params.m ?? 0) <= 0) issues.push({ key: "m", message: "m must be positive" });
-  if ((params.g ?? 0) <= 0) issues.push({ key: "g", message: "g must be positive" });
-  return issues;
-}
+export { camera };

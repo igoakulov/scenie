@@ -1,5 +1,5 @@
-import type { GridState } from "../runtime/grid";
-import { DEFAULT_GRID } from "../runtime/grid";
+import type { GridState } from "../host/grid";
+import { DEFAULT_GRID } from "../host/grid";
 import { MultiSelectField } from "./MultiSelectField";
 import { NumberField } from "./NumberField";
 

@@ -33,14 +33,16 @@ loop: list → write scenes/<id>/ → validate → show
 
 config: ~/.config/scenie/config.json  (win: %APPDATA%\\scenie\\config.json)
   keys: workspace, optional port (default 3471)
-layout: <workspace>/scenes/<id>/{metadata.json,scene.js,assets?/}
+layout: <workspace>/scenes/<id>/{metadata.json,scene.js,host.js?,assets?/}
   id: kebab-case folder; leading . = hidden from Library (CLI list/validate/show still work)
-meta: title, description, tags[] required; optional dimensions 2|3 (default 3)
+meta: title, description, tags[] required
+scene: export { scene } (THREE.Scene or constructed graph)
+host: optional host.js — export const host { lights, helpers, camera, playback, view:"2d"|"3d" } (omit file = 3d / all true)
 
 output:
   workspace <abs>   or  workspace (from config) <abs>  (bare init)
   @ scenes/<id>
-  - …          list: title | ERR; validate/show: ok | path: msg
+  - …          list: title | ERR; validate/show: ok | path: msg | warn path: msg
   listen <url>           show ready (opens browser)
 `);
 

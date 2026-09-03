@@ -149,7 +149,7 @@
 
 .css2d-label {
   font-family: var(--font-sans), system-ui, sans-serif;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--foreground);
   background: color-mix(in oklch, var(--background) 75%, transparent);
@@ -169,7 +169,7 @@
 
 .axis-label {
   font-family: var(--font-sans), system-ui, sans-serif;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--foreground);
   background: color-mix(in oklch, var(--background) 80%, transparent);
