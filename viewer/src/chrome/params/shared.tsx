@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import type { ParamValue } from "../../host/defaults";
 import {
   resolveLabelValue,
@@ -162,13 +162,6 @@ function StringControl({
 }) {
   const id = useId();
   const str = typeof value === "string" ? value : node.default;
-  const [draft, setDraft] = useState(str);
-  const focused = useRef(false);
-
-  useEffect(() => {
-    if (!focused.current) setDraft(str);
-  }, [str]);
-
   return (
     <Field className="gap-1">
       <FieldLabel htmlFor={id} className="text-xs text-muted-foreground">
@@ -179,18 +172,8 @@ function StringControl({
         type="text"
         className="h-7 text-xs"
         placeholder={node.placeholder}
-        value={draft}
-        onFocus={() => {
-          focused.current = true;
-        }}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          onChange(node.key, e.target.value);
-        }}
-        onBlur={() => {
-          focused.current = false;
-          onChange(node.key, draft);
-        }}
+        value={str}
+        onChange={(e) => onChange(node.key, e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") e.currentTarget.blur();
         }}

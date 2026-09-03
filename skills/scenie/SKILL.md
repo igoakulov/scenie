@@ -48,7 +48,7 @@ Unless user states otherwise:
 ```json
 {
   "title": "Polyline through points",          // required
-  "description": "Edit x,y pairs; host remounts polyline...",  // required; topic, scene contents, notes from user conversation; markdown + KaTeX $…$ / $$…$$ ok
+  "description": "Edit x,y pairs; polyline follows cards...",  // required; topic, scene contents, notes from user conversation; markdown + KaTeX $…$ / $$…$$ ok
   "tags": ["geometry", "graphs"],             // required
   "attribution": { "author": "…", "model": "gpt-…", "prompt": "..." }  // optional
 }
@@ -61,15 +61,17 @@ import * as THREE from "three";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 const scene = new THREE.Scene();
-// polyline from host cards (points string, yaw, offset, layers)
-
-const pts = parsePoints(params.points ?? ""); // you parse raw string card → values graph can use (lists, pairs, …); do NOT declare params
-// Line from pts, rotation.y from params.lift; marker at params.off_x/off_y/off_z if layers
-
+const line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xf97316 }));
+const marker = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 12), new THREE.MeshBasicMaterial({ color: 0x88aaff }));
 const el = document.createElement("div");
-el.textContent = `${pts.length} pts`; // live chip
-scene.add(new CSS2DObject(el));
+scene.add(line, marker, new CSS2DObject(el));
 
+export function applyParams(params, change) {
+  const pts = parsePoints(params.points ?? ""); // parse string card → values graph can use (lists, pairs, …); do NOT declare params
+  // geo from pts; line.rotation.y from params.lift; marker at off_x/off_y/off_z; .visible from layers
+  el.textContent = params.show_label === false ? "" : `${pts.length} pts`; // live chip
+}
+applyParams(params, { key: "", value: params });
 // optional: export function update(t, dt) { el.textContent = `$t=${t.toFixed(1)}$`; }
 // export { camera } — start pose first open ONLY if host.camera true
 // export { scene } — ONLY if >1 Scene
@@ -77,12 +79,13 @@ scene.add(new CSS2DObject(el));
 ```
 
 - Graph = first `new THREE.Scene()`. `params` = flat cards bag (ONLY if host.js has cards; do NOT declare params).
-- HOST TIME — host sole rAF; calls `update` / host `updateView`. NO private rAF / setAnimationLoop / setInterval-as-loop / GSAP ticker (Play/Pause, param remount, scene switch cannot stop you). Both hooks OK.
+- `applyParams(params, change)` — card bag → graph. export; call once at load. Host calls on each edit. Read `params` here (not top-level).
+- HOST TIME — host sole rAF; calls `update` / host `updateView`. NO private rAF / setAnimationLoop / setInterval-as-loop / GSAP ticker (Play/Pause, applyParams, scene switch cannot stop you). Both hooks OK.
 - `update(t, dt)` optional — sim/content on host clock; Pause freezes path (`t`/`dt` stop advancing). Closes over meshes (no scene arg). OMIT if static; PRESENT (even no-op) ⇒ NO host idle orbit.
 - `dispose() - only with audio, Worker, URL.createObjectURL. Host already drops the rest.`
 - `dt` = rates/integration; `t` = phase / f(time) (`update` only).
 - NO OrbitControls or other navigation when host.camera is true.
-- Labels = unstyled `CSS2DObject` from `three/addons` (class/pointer-events/KaTeX are host). Empty `textContent` hides. `$…$` / `$$…$$` ok. Set in scene.js and/or `el.textContent` in `update`. Do NOT build CSS2DRenderer; do NOT style div.
+- Labels = unstyled `CSS2DObject` from `three/addons` (class/pointer-events/KaTeX are host). Empty `textContent` hides. `$…$` / `$$…$$` ok. Set in `applyParams` and/or `el.textContent` in `update`. Do NOT build CSS2DRenderer; do NOT style div.
 - NO WebGLRenderer / second WebGL canvas.
 
 ## host.js
@@ -162,7 +165,7 @@ EDITABLE types (each has key, label, default → params bag):
 
 LIFECYCLE
 
-- User edits field → optional `onParamsChange(params, change)` with `change = { key, value }` MUST return next flat bag (return value authoritative) → host re-imports `scene.js` with new bag (keeps camera pose; does not re-run bindInput).
+- User edits field → optional `onParamsChange(params, change)` with `change = { key, value }` MUST return next flat bag (return value authoritative) → host writes bag into `params`, calls `applyParams(params, change)`.
 - Optional `validateParams(params)` → soft issues `[{ key?, message, cardId? }…]` or `[]` — CLI `scenie validate` on defaults only (not live UI).
 
 RULES
@@ -170,9 +173,9 @@ RULES
 - Single ordered `children` on cards — no parallel field rows
 - Writable keys UNIQUE tree-wide; bag FLAT
 - Do NOT invent types (vector, color, angle, text, …)
-- Angles: number + unit `"rad"` or `"°"` — unit is display-only; convert in scene.js/update yourself
+- Angles: number + unit `"rad"` or `"°"` — unit is display-only; convert in applyParams/update yourself
 - Vectors: separate number keys (`v_x`, `v_y`, `v_z`)
-- Freeform lists: string + parse in scene.js; format in placeholder
+- Freeform lists: string + parse in applyParams; format in placeholder
 - Fixed multi flags: multiselect
 
 ## Agent workflow

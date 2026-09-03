@@ -96,6 +96,11 @@ export function userFacingError(
       `update() failed: ${stripPrefix(msg, /^update\(\) threw:\s*/i)}.`,
     );
   }
+  if (/^applyParams threw:/i.test(msg)) {
+    return tagged(
+      `applyParams failed: ${stripPrefix(msg, /^applyParams threw:\s*/i)}.`,
+    );
+  }
   if (/^updateView\(\) threw:/i.test(msg)) {
     return tagged(
       `updateView() failed: ${stripPrefix(msg, /^updateView\(\) threw:\s*/i)}.`,

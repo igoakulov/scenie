@@ -4,19 +4,33 @@ import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x010105);
 
-const layers = new Set(params.layers ?? ["orbits", "labels", "moons", "asteroids", "atmospheres", "comet", "kuiper"]);
-const detail = params.detail ?? "high";
-const planetScale = (params.planet_scale ?? 1) * 0.5;
-const sunGlow = params.sun_glow ?? 1.1;
-const elliptical = params.elliptical !== false;
-const show = (k) => layers.has(k);
+const SEG = 72;
+const SEG_SMALL = 28;
+const STAR_N = 7000;
+const AST_N = 420;
+const KUIPER_N = 260;
+const WIND_N = 280;
+const planetScale = 0.5;
+const sunGlow = 1.1;
+let elliptical = true;
+let timeScale = 0.2;
+let windCount = WIND_N;
 
-const SEG = detail === "high" ? 72 : detail === "medium" ? 44 : 28;
-const SEG_SMALL = detail === "high" ? 28 : 18;
-const STAR_N = detail === "high" ? 7000 : detail === "medium" ? 3800 : 1600;
-const AST_N = detail === "high" ? 420 : detail === "medium" ? 220 : 90;
-const KUIPER_N = detail === "high" ? 260 : detail === "medium" ? 120 : 40;
-const WIND_N = detail === "high" ? 280 : 140;
+const layerObjs = {
+  orbits: [],
+  labels: [],
+  moons: [],
+  asteroids: [],
+  atmospheres: [],
+  comet: [],
+  kuiper: [],
+};
+const planetBodies = [];
+const glowSprites = [];
+const orbitRecords = [];
+let cometCore = null;
+let starsDim = null;
+let starsBright = null;
 
 const geoCache = new Map();
 function unitSphere(seg) {
@@ -453,10 +467,11 @@ function glowSprite(color, size) {
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     transparent: true,
-    opacity: 0.95 * sunGlow,
+    opacity: 0.95,
   });
   const s = new THREE.Sprite(mat);
   s.scale.setScalar(size);
+  s.userData.baseSize = size;
   return s;
 }
 
@@ -482,9 +497,15 @@ const coronaMat = new THREE.ShaderMaterial({
 const corona = new THREE.Mesh(unitSphere(40), coronaMat);
 corona.scale.setScalar(SUN_R * 1.55);
 scene.add(corona);
-scene.add(glowSprite("rgba(255,210,80,1)", 5.4 * sunGlow));
-scene.add(glowSprite("rgba(255,120,20,1)", 9.2 * sunGlow));
-scene.add(glowSprite("rgba(255,60,10,1)", 14.5 * sunGlow));
+function addSunGlow(color, size) {
+  const s = glowSprite(color, size);
+  glowSprites.push(s);
+  scene.add(s);
+  return s;
+}
+addSunGlow("rgba(255,210,80,1)", 5.4);
+addSunGlow("rgba(255,120,20,1)", 9.2);
+addSunGlow("rgba(255,60,10,1)", 14.5);
 
 const sunLight = new THREE.PointLight(0xfff1c8, 14, 0, 1.05);
 scene.add(sunLight);
@@ -493,9 +514,11 @@ scene.add(new THREE.HemisphereLight(0x334466, 0x050308, 0.18));
 
 function makeLabel(text, y) {
   const el = document.createElement("div");
-  el.textContent = show("labels") ? text : "";
+  el.textContent = text;
   const obj = new CSS2DObject(el);
   obj.position.set(0, y, 0);
+  obj.userData.labelText = text;
+  layerObjs.labels.push(obj);
   return obj;
 }
 
@@ -513,7 +536,6 @@ function planetMat(map, extra = {}) {
 }
 
 function addAtmosphere(parent, radius, color, gain, pow, aurora = 0) {
-  if (!show("atmospheres")) return null;
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uColor: { value: new THREE.Color(color) },
@@ -529,9 +551,12 @@ function addAtmosphere(parent, radius, color, gain, pow, aurora = 0) {
     depthWrite: false,
     side: THREE.BackSide,
   });
+  mat.userData.baseGain = gain;
   const mesh = new THREE.Mesh(unitSphere(36), mat);
   mesh.scale.setScalar(radius);
   parent.add(mesh);
+  layerObjs.atmospheres.push(mesh);
+  atmMats.push(mat);
   return mat;
 }
 
@@ -582,7 +607,6 @@ const movers = [];
 const atmMats = [coronaMat];
 
 function addOrbitLine(root, a, e, color) {
-  if (!show("orbits")) return;
   const geo = new THREE.BufferGeometry().setFromPoints(ellipsePts(a, e, 256));
   const mat = new THREE.LineBasicMaterial({
     color,
@@ -590,12 +614,17 @@ function addOrbitLine(root, a, e, color) {
     opacity: 0.32,
     depthWrite: false,
   });
-  root.add(new THREE.LineLoop(geo, mat));
+  const line = new THREE.LineLoop(geo, mat);
+  root.add(line);
+  orbitRecords.push({ line, a, e });
+  layerObjs.orbits.push(line);
+  return line;
 }
 
 function mountMoon(parent, spec, planetR) {
   const pivot = new THREE.Group();
   parent.add(pivot);
+  layerObjs.moons.push(pivot);
   const r = spec.r * planetScale;
   const mesh = new THREE.Mesh(unitSphere(SEG_SMALL), planetMat(spec.map ?? maps.moon, { roughness: 0.86, bumpScale: 0.02 }));
   mesh.scale.setScalar(r);
@@ -603,7 +632,7 @@ function mountMoon(parent, spec, planetR) {
   mesh.position.set(dist, 0, 0);
   pivot.add(mesh);
   if (spec.atm) addAtmosphere(mesh, 1.18, spec.atm, 0.7, 2.4);
-  if (show("labels") && spec.name) mesh.add(makeLabel(spec.name, 1.35));
+  if (spec.name) mesh.add(makeLabel(spec.name, 1.35));
   addOrbitLine(pivot, dist, 0.02, 0x667788);
   movers.push({
     kind: "moon",
@@ -776,6 +805,7 @@ for (const b of BODIES) {
 
   const body = new THREE.Group();
   root.add(body);
+  planetBodies.push(body);
 
   const tiltG = new THREE.Group();
   tiltG.rotation.z = (b.tilt * Math.PI) / 180;
@@ -814,15 +844,14 @@ for (const b of BODIES) {
   }
 
   if (b.atm) {
-    const am = addAtmosphere(tiltG, r * b.atm.s, b.atm.c, b.atm.g * sunGlow, b.atm.p, b.atm.aurora ?? 0);
-    if (am) atmMats.push(am);
+    addAtmosphere(tiltG, r * b.atm.s, b.atm.c, b.atm.g, b.atm.p, b.atm.aurora ?? 0);
   }
   if (b.rings) {
     const tex = ringTex(b.rings.kind);
     addRings(tiltG, r * b.rings.inner, r * b.rings.outer, tex);
   }
 
-  if (show("moons") && b.moons) {
+  if (b.moons) {
     for (const m of b.moons) mountMoon(tiltG, m, r);
   }
 
@@ -875,20 +904,19 @@ function makeBelt(count, r0, r1, ySpread, size0, size1, pal, speed) {
   return { mesh, items, dummy, speed };
 }
 
-const asteroidBelt = show("asteroids")
-  ? makeBelt(AST_N, 8.15, 9.55, 0.28, 0.012, 0.045, { h: 0.08, dh: 0.04, s: 0.35, l: 0.42 }, 0.72)
-  : null;
-const kuiperBelt = show("kuiper")
-  ? makeBelt(KUIPER_N, 26.6, 31.2, 1.1, 0.018, 0.055, { h: 0.55, dh: 0.08, s: 0.15, l: 0.62 }, 0.11)
-  : null;
+const asteroidBelt = makeBelt(AST_N, 8.15, 9.55, 0.28, 0.012, 0.045, { h: 0.08, dh: 0.04, s: 0.35, l: 0.42 }, 0.72);
+const kuiperBelt = makeBelt(KUIPER_N, 26.6, 31.2, 1.1, 0.018, 0.055, { h: 0.55, dh: 0.08, s: 0.15, l: 0.62 }, 0.11);
+layerObjs.asteroids.push(asteroidBelt.mesh);
+layerObjs.kuiper.push(kuiperBelt.mesh);
 
 let comet = null;
 let cometTail = null;
 let cometTail2 = null;
-if (show("comet")) {
+{
   const root = new THREE.Group();
   root.rotation.z = 0.32;
   scene.add(root);
+  layerObjs.comet.push(root);
   addOrbitLine(root, 16.8, 0.78, 0x88ddff);
   const body = new THREE.Group();
   root.add(body);
@@ -897,6 +925,7 @@ if (show("comet")) {
     new THREE.MeshStandardMaterial({ color: 0xccddff, emissive: 0x88aaff, emissiveIntensity: 0.4, roughness: 0.5 })
   );
   core.scale.setScalar(0.07 * planetScale);
+  cometCore = core;
   body.add(core);
   body.add(makeLabel("Comet", 0.16));
   const mkTail = (n, color, size) => {
@@ -913,10 +942,10 @@ if (show("comet")) {
     });
     const p = new THREE.Points(g, m);
     body.add(p);
-    return { g, n, p, seeds: Float32Array.from({ length: n * 3 }, (_, i) => h3(i * 0.17, 2, 9) - 0.5) };
+    return { g, n, p, seeds: Float32Array.from({ length: n * 3 }, (_, i) => h3(i * 0.17, 2, 9) - 0.5), drawN: n };
   };
-  cometTail = mkTail(detail === "low" ? 180 : 420, 0xaad4ff, 0.09);
-  cometTail2 = mkTail(detail === "low" ? 120 : 280, 0xffcc88, 0.07);
+  cometTail = mkTail(420, 0xaad4ff, 0.09);
+  cometTail2 = mkTail(280, 0xffcc88, 0.07);
   comet = { body, a: 16.8, e: 0.78, period: 18.5, phase: 2.1 };
   movers.push({ kind: "planet", body, a: comet.a, e: comet.e, period: comet.period, phase: comet.phase, spin: 0, spinG: core });
 }
@@ -1004,8 +1033,10 @@ function starfield(n, radius, size, bright) {
     })
   );
 }
-scene.add(starfield(STAR_N, 320, 0.42, false));
-scene.add(starfield((STAR_N / 7) | 0, 300, 0.95, true));
+starsDim = starfield(STAR_N, 320, 0.42, false);
+starsBright = starfield((STAR_N / 7) | 0, 300, 0.95, true);
+scene.add(starsDim);
+scene.add(starsBright);
 
 const windPos = new Float32Array(WIND_N * 3);
 const windSeed = [];
@@ -1074,13 +1105,14 @@ function placeBelt(belt, years) {
 
 function updateTail(tail, years) {
   if (!tail || !comet) return;
+  const n = tail.drawN ?? tail.n;
   const pos = tail.g.attributes.position.array;
   const away = comet.body.position.clone().normalize();
   const side = new THREE.Vector3(-away.z, 0.15, away.x).normalize();
   const up = new THREE.Vector3().crossVectors(away, side).normalize();
   const stretch = 0.55 + 2.4 * (1 - Math.min(1, comet.body.position.length() / 22));
-  for (let i = 0; i < tail.n; i++) {
-    const k = i / tail.n;
+  for (let i = 0; i < n; i++) {
+    const k = i / n;
     const sx = tail.seeds[i * 3];
     const sy = tail.seeds[i * 3 + 1];
     const sz = tail.seeds[i * 3 + 2];
@@ -1094,8 +1126,66 @@ function updateTail(tail, years) {
   tail.g.attributes.position.needsUpdate = true;
 }
 
+export function applyParams(params, change) {
+  void change;
+  timeScale = params.time_scale ?? 0.2;
+  elliptical = params.elliptical !== false;
+  const L = new Set(params.layers ?? ["orbits", "labels", "moons", "asteroids", "atmospheres", "comet", "kuiper"]);
+  const ps = params.planet_scale ?? 1;
+  const glow = params.sun_glow ?? 1.1;
+  const detail = params.detail ?? "high";
+
+  for (const rec of orbitRecords) {
+    rec.line.geometry.setFromPoints(ellipsePts(rec.a, rec.e, 256));
+  }
+
+  for (const key of Object.keys(layerObjs)) {
+    const on = L.has(key);
+    for (const obj of layerObjs[key]) {
+      if (key === "labels") obj.element.textContent = on ? obj.userData.labelText : "";
+      else obj.visible = on;
+    }
+  }
+
+  for (const g of planetBodies) g.scale.setScalar(ps);
+  if (cometCore) cometCore.scale.setScalar(0.07 * planetScale * ps);
+
+  sunMat.uniforms.uGlow.value = glow;
+  coronaMat.uniforms.uGlow.value = glow;
+  for (const s of glowSprites) {
+    s.scale.setScalar(s.userData.baseSize * glow);
+    s.material.opacity = 0.95 * glow;
+  }
+  for (const mesh of layerObjs.atmospheres) {
+    const mat = mesh.material;
+    if (mat.userData.baseGain != null) mat.uniforms.uGain.value = mat.userData.baseGain * glow;
+  }
+
+  const astN = detail === "high" ? AST_N : detail === "medium" ? 220 : 90;
+  const kuiN = detail === "high" ? KUIPER_N : detail === "medium" ? 120 : 40;
+  const starN = detail === "high" ? STAR_N : detail === "medium" ? 3800 : 1600;
+  windCount = detail === "high" ? WIND_N : 140;
+  const tailN = detail === "low" ? 180 : 420;
+  const tail2N = detail === "low" ? 120 : 280;
+
+  if (asteroidBelt) asteroidBelt.mesh.count = astN;
+  if (kuiperBelt) kuiperBelt.mesh.count = kuiN;
+  if (starsDim) starsDim.geometry.setDrawRange(0, starN);
+  if (starsBright) starsBright.geometry.setDrawRange(0, (starN / 7) | 0);
+  windGeo.setDrawRange(0, windCount);
+  if (cometTail) {
+    cometTail.drawN = tailN;
+    cometTail.g.setDrawRange(0, tailN);
+  }
+  if (cometTail2) {
+    cometTail2.drawN = tail2N;
+    cometTail2.g.setDrawRange(0, tail2N);
+  }
+}
+applyParams(params, { key: "", value: params });
+
 export function update(t, dt) {
-  const ts = params.time_scale ?? 0.2;
+  const ts = timeScale;
   const years = t * ts / 25;
   sunMat.uniforms.uTime.value = t;
   coronaMat.uniforms.uTime.value = t;
@@ -1123,7 +1213,7 @@ export function update(t, dt) {
   }
 
   const wpos = windGeo.attributes.position.array;
-  for (let i = 0; i < WIND_N; i++) {
+  for (let i = 0; i < windCount; i++) {
     const s = windSeed[i];
     s.rad += dt * s.sp * (0.4 + ts * 0.04);
     if (s.rad > 22) s.rad = 1.35 + h3(i, t, 1) * 0.4;

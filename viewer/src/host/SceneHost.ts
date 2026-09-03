@@ -16,6 +16,7 @@ import type { ParamValue } from "./defaults";
 import {
   importSceneGraph,
   type LoadedScene,
+  type ParamsChange,
   type SceneMetadata,
 } from "./loadScene";
 import {
@@ -248,6 +249,23 @@ export class SceneHost {
     this.restartLoop();
   }
 
+  applyParams(params: LoadedScene["params"], change: ParamsChange): void {
+    const apply = this.loaded?.module.applyParams;
+    if (typeof apply !== "function") return;
+    this.writeLiveParams(params);
+    try {
+      apply(this.sceneParams, change);
+    } catch (err) {
+      throw new Error(
+        `applyParams threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    stripForeignCss2dOverlays(this.root, this.labelRenderer.domElement);
+    this.annotations = discoverAnnotations(this.root);
+    this.applyDefaultLightsPolicy();
+    this.kickUpdateOnce();
+  }
+
   async remountWithParams(params: LoadedScene["params"]): Promise<void> {
     this.tearDownSceneContent(false);
     this.sceneParams = { ...params };
@@ -265,6 +283,13 @@ export class SceneHost {
     this.applyAutoRotate();
     this.notifyPlayback();
     this.restartLoop();
+  }
+
+  /** Keep the object scene.js closed over (`const params = __scenieParams`). */
+  private writeLiveParams(params: LoadedScene["params"]): void {
+    const bag = this.sceneParams;
+    for (const k of Object.keys(bag)) delete bag[k];
+    Object.assign(bag, params);
   }
 
   private async mountGraph(opts: {
@@ -297,6 +322,7 @@ export class SceneHost {
       loaded.module.camera = imported.camera;
       loaded.module.update = imported.update;
       loaded.module.dispose = imported.dispose;
+      loaded.module.applyParams = imported.applyParams;
       this.root.add(content);
       this.stripForeignWebGLCanvases();
       stripForeignCss2dOverlays(this.root, this.labelRenderer.domElement);

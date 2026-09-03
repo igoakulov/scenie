@@ -25,6 +25,8 @@ export interface LoadedScene {
   injectParams: boolean;
 }
 
+export type ParamsChange = { key: string; value: ParamValue };
+
 export interface SceneModule {
   scene?: unknown;
   camera?: unknown;
@@ -32,9 +34,13 @@ export interface SceneModule {
   updateView?: (dt: number, camera: unknown) => void;
   bindInput?: (canvas: HTMLCanvasElement, camera: unknown) => void;
   dispose?: () => void;
+  applyParams?: (
+    params: Record<string, ParamValue>,
+    change: ParamsChange,
+  ) => void;
   onParamsChange?: (
     params: Record<string, ParamValue>,
-    change: { key: string; value: ParamValue },
+    change: ParamsChange,
   ) => Record<string, ParamValue>;
 }
 
@@ -137,6 +143,7 @@ export async function importSceneGraph(
   camera?: unknown;
   update?: SceneModule["update"];
   dispose?: SceneModule["dispose"];
+  applyParams?: SceneModule["applyParams"];
   captured: unknown;
 }> {
   (globalThis as { __scenieParams?: Record<string, ParamValue> }).__scenieParams =
@@ -159,6 +166,10 @@ export async function importSceneGraph(
       dispose:
         typeof mod.dispose === "function"
           ? (mod.dispose as SceneModule["dispose"])
+          : undefined,
+      applyParams:
+        typeof mod.applyParams === "function"
+          ? (mod.applyParams as SceneModule["applyParams"])
           : undefined,
       captured: cap.get(),
     };

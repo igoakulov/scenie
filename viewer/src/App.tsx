@@ -227,22 +227,6 @@ export function App() {
     window.history.replaceState({}, "", url.pathname + url.search);
   }, []);
 
-  // UI bag updates immediately; scene remount is debounced (typing stays smooth).
-  const remountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingParamsRef = useRef<Record<string, ParamValue> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (remountTimerRef.current) clearTimeout(remountTimerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (remountTimerRef.current) clearTimeout(remountTimerRef.current);
-    remountTimerRef.current = null;
-    pendingParamsRef.current = null;
-  }, [sceneId, loaded?.id]);
-
   const onParamChange = useCallback(
     (key: string, value: ParamValue) => {
       const rt = hostRef.current;
@@ -269,24 +253,27 @@ export function App() {
           }
         }
 
-        // Blur after number edit re-commits the same value; remount then kills the first orbit drag.
+        // Blur after a live parse re-commits the same value — skip the graph.
         if (paramBagsEqual(prev, next)) return prev;
 
-        pendingParamsRef.current = next;
-        if (remountTimerRef.current) clearTimeout(remountTimerRef.current);
-        remountTimerRef.current = setTimeout(() => {
-          remountTimerRef.current = null;
-          const bag = pendingParamsRef.current;
-          if (!bag || !hostRef.current) return;
-          void (async () => {
-            try {
-              await hostRef.current.remountWithParams(bag);
-              setError(null);
-            } catch (err) {
-              setError(userFacingError(err, loaded.id));
-            }
-          })();
-        }, 500);
+        if (typeof loaded.module.applyParams === "function") {
+          try {
+            rt.applyParams(next, { key, value });
+            setError(null);
+          } catch (err) {
+            setError(userFacingError(err, loaded.id));
+          }
+          return next;
+        }
+
+        void (async () => {
+          try {
+            await rt.remountWithParams(next);
+            setError(null);
+          } catch (err) {
+            setError(userFacingError(err, loaded.id));
+          }
+        })();
 
         return next;
       });

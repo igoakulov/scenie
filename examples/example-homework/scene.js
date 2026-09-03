@@ -3,24 +3,6 @@ import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 const scene = new THREE.Scene();
 
-const L = Number(params.L ?? 0.8);
-const m = Number(params.m ?? 0.25);
-const theta0Deg = Number(params.theta0 ?? 30);
-const g = Number(params.g ?? 9.8);
-const theta0 = (theta0Deg * Math.PI) / 180;
-const mode = params.mode ?? "animate";
-const overlays = new Set(params.overlays ?? ["path", "forces", "energy", "height"]);
-
-const hDrop = L * (1 - Math.cos(theta0));
-const vBottom = Math.sqrt(Math.max(0, 2 * g * hDrop));
-const TBottom = m * (g + (vBottom * vBottom) / L);
-const ETot = m * g * hDrop;
-const mg = m * g;
-
-const pivot = new THREE.Vector3(0, 0, 0);
-const bobR = 0.05 * Math.cbrt(Math.max(m, 0.05) / 0.25);
-const arcR = Math.min(0.22, 0.28 * L);
-
 const col = {
   support: 0x8b95a3,
   string: 0x9eb0c2,
@@ -38,6 +20,9 @@ const col = {
   mark: 0x8b95a3,
 };
 
+const BOB_R0 = 0.05;
+const barW = 0.07;
+
 function label(text) {
   const el = document.createElement("div");
   el.textContent = text;
@@ -53,8 +38,7 @@ function setLabel(item, text, x, y, on) {
 }
 
 function lineGeom(points) {
-  const geo = new THREE.BufferGeometry().setFromPoints(points);
-  return geo;
+  return new THREE.BufferGeometry().setFromPoints(points);
 }
 
 function addLine(points, material) {
@@ -62,6 +46,12 @@ function addLine(points, material) {
   if (material.isLineDashedMaterial) mesh.computeLineDistances();
   scene.add(mesh);
   return mesh;
+}
+
+function setLine(mesh, points) {
+  mesh.geometry.dispose();
+  mesh.geometry = lineGeom(points);
+  if (mesh.material.isLineDashedMaterial) mesh.computeLineDistances();
 }
 
 const supportMat = new THREE.MeshBasicMaterial({ color: col.support });
@@ -73,50 +63,44 @@ const pivotMesh = new THREE.Mesh(new THREE.SphereGeometry(0.028, 16, 12), suppor
 scene.add(pivotMesh);
 
 const vertical = addLine(
-  [new THREE.Vector3(0, 0.02, -0.02), new THREE.Vector3(0, -L - 0.08, -0.02)],
+  [new THREE.Vector3(0, 0.02, -0.02), new THREE.Vector3(0, -0.88, -0.02)],
   new THREE.LineDashedMaterial({ color: col.vertical, dashSize: 0.045, gapSize: 0.028, depthTest: false }),
 );
 
-const pathCurve = new THREE.EllipseCurve(0, 0, L, L, -Math.PI / 2 - theta0, -Math.PI / 2 + theta0, false, 0);
 const pathLine = addLine(
-  pathCurve.getPoints(64),
+  [new THREE.Vector3(), new THREE.Vector3()],
   new THREE.LineBasicMaterial({ color: col.path, transparent: true, opacity: 0.45, depthTest: false }),
 );
-pathLine.visible = overlays.has("path");
 
-const startPos = new THREE.Vector3(L * Math.sin(theta0), -L * Math.cos(theta0), 0);
 const ghostString = addLine(
-  [pivot.clone(), startPos.clone()],
+  [new THREE.Vector3(), new THREE.Vector3()],
   new THREE.LineDashedMaterial({ color: col.ghost, dashSize: 0.04, gapSize: 0.025, depthTest: false }),
 );
 const ghostBob = new THREE.Mesh(
-  new THREE.SphereGeometry(bobR, 16, 12),
+  new THREE.SphereGeometry(BOB_R0, 16, 12),
   new THREE.MeshBasicMaterial({ color: col.ghost, transparent: true, opacity: 0.28, depthTest: false }),
 );
-ghostBob.position.copy(startPos);
 scene.add(ghostBob);
 
 const bottomMark = addLine(
-  [new THREE.Vector3(-0.07, -L, -0.01), new THREE.Vector3(0.07, -L, -0.01)],
+  [new THREE.Vector3(-0.07, -0.8, -0.01), new THREE.Vector3(0.07, -0.8, -0.01)],
   new THREE.LineBasicMaterial({ color: col.mark, depthTest: false }),
 );
 
-const hTop = -L * Math.cos(theta0);
-const hX = startPos.x + bobR + 0.08;
 const heightGroup = new THREE.Group();
 const heightMat = new THREE.LineBasicMaterial({ color: col.height, depthTest: false });
-heightGroup.add(new THREE.Line(lineGeom([new THREE.Vector3(hX - 0.04, hTop, 0), new THREE.Vector3(hX + 0.04, hTop, 0)]), heightMat));
-heightGroup.add(new THREE.Line(lineGeom([new THREE.Vector3(hX, hTop, 0), new THREE.Vector3(hX, -L, 0)]), heightMat));
-heightGroup.add(new THREE.Line(lineGeom([new THREE.Vector3(hX - 0.04, -L, 0), new THREE.Vector3(hX + 0.04, -L, 0)]), heightMat));
+const hTickTop = new THREE.Line(lineGeom([new THREE.Vector3(), new THREE.Vector3()]), heightMat);
+const hStem = new THREE.Line(lineGeom([new THREE.Vector3(), new THREE.Vector3()]), heightMat);
+const hTickBot = new THREE.Line(lineGeom([new THREE.Vector3(), new THREE.Vector3()]), heightMat);
+heightGroup.add(hTickTop, hStem, hTickBot);
 scene.add(heightGroup);
-heightGroup.visible = overlays.has("height");
 
 const stringGeo = new THREE.BufferGeometry();
 stringGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
 const stringLine = new THREE.Line(stringGeo, new THREE.LineBasicMaterial({ color: col.string, depthTest: false }));
 scene.add(stringLine);
 
-const bob = new THREE.Mesh(new THREE.SphereGeometry(bobR, 20, 16), new THREE.MeshBasicMaterial({ color: col.bob }));
+const bob = new THREE.Mesh(new THREE.SphereGeometry(BOB_R0, 20, 16), new THREE.MeshBasicMaterial({ color: col.bob }));
 scene.add(bob);
 
 const angleLine = new THREE.Line(
@@ -130,10 +114,6 @@ const tArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vecto
 const wArrow = new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), new THREE.Vector3(), 0.2, col.weight, 0.07, 0.045);
 scene.add(velArrow, tArrow, wArrow);
 
-const energyX = L + 0.42;
-const barH = L;
-const barW = 0.07;
-const energyBase = -L;
 const trackMat = new THREE.LineBasicMaterial({ color: col.mark, transparent: true, opacity: 0.7, depthTest: false });
 const peMat = new THREE.MeshBasicMaterial({ color: col.pe, depthTest: false });
 const keMat = new THREE.MeshBasicMaterial({ color: col.ke, depthTest: false });
@@ -146,30 +126,28 @@ function makeBar(mat, x) {
   return mesh;
 }
 
-const peBar = makeBar(peMat, energyX);
-const keBar = makeBar(keMat, energyX + 0.11);
+const peBar = makeBar(peMat, 1.22);
+const keBar = makeBar(keMat, 1.33);
 const peTrack = addLine(
   [
-    new THREE.Vector3(energyX - barW / 2, energyBase, 0),
-    new THREE.Vector3(energyX + barW / 2, energyBase, 0),
-    new THREE.Vector3(energyX + barW / 2, energyBase + barH, 0),
-    new THREE.Vector3(energyX - barW / 2, energyBase + barH, 0),
-    new THREE.Vector3(energyX - barW / 2, energyBase, 0),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
   ],
   trackMat,
 );
 const keTrack = addLine(
   [
-    new THREE.Vector3(energyX + 0.11 - barW / 2, energyBase, 0),
-    new THREE.Vector3(energyX + 0.11 + barW / 2, energyBase, 0),
-    new THREE.Vector3(energyX + 0.11 + barW / 2, energyBase + barH, 0),
-    new THREE.Vector3(energyX + 0.11 - barW / 2, energyBase + barH, 0),
-    new THREE.Vector3(energyX + 0.11 - barW / 2, energyBase, 0),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
   ],
   trackMat,
 );
-const energyOn = overlays.has("energy");
-peBar.visible = keBar.visible = peTrack.visible = keTrack.visible = energyOn;
 
 const labSupport = label("fixed support");
 const labL = label("$L$");
@@ -184,30 +162,28 @@ const labKE = label("$K$");
 const labLive = label("");
 const labAns = label("");
 
-setLabel(labSupport, "fixed support", 0.28, 0.07, true);
-setLabel(labBottom, "bottom", 0.16, -L - 0.02, true);
-setLabel(labH, `$h=${hDrop.toFixed(3)}\\,\\mathrm{m}$`, hX + 0.16, (hTop - L) / 2, overlays.has("height"));
-setLabel(
-  labAns,
-  `$v_{\\mathrm{bottom}}=${vBottom.toFixed(3)}\\,\\mathrm{m/s}$\\quad $T_{\\mathrm{bottom}}=${TBottom.toFixed(3)}\\,\\mathrm{N}$`,
-  0.15,
-  0.22,
-  true,
-);
-
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
 camera.position.set(0.38, -0.34, 3.3);
 camera.lookAt(0.38, -0.34, 0);
 
-let theta = theta0;
-let omega = 0;
-if (mode === "at bottom") {
-  theta = 0;
-  omega = -vBottom / L;
-} else if (mode === "at release") {
-  theta = theta0;
-  omega = 0;
-}
+let L;
+let m;
+let g;
+let theta0;
+let mode;
+let overlays;
+let hDrop;
+let vBottom;
+let ETot;
+let mg;
+let bobR;
+let arcR;
+let energyX;
+let barH;
+let energyBase;
+let energyOn;
+let theta;
+let omega;
 
 function accel(th) {
   return -(g / L) * Math.sin(th);
@@ -309,7 +285,91 @@ function applyPose() {
   );
 }
 
-applyPose();
+export function applyParams(params, change) {
+  L = Number(params.L ?? 0.8);
+  m = Number(params.m ?? 0.25);
+  const theta0Deg = Number(params.theta0 ?? 30);
+  g = Number(params.g ?? 9.8);
+  theta0 = (theta0Deg * Math.PI) / 180;
+  mode = params.mode ?? "animate";
+  overlays = new Set(params.overlays ?? ["path", "forces", "energy", "height"]);
+
+  hDrop = L * (1 - Math.cos(theta0));
+  vBottom = Math.sqrt(Math.max(0, 2 * g * hDrop));
+  const TBottom = m * (g + (vBottom * vBottom) / L);
+  ETot = m * g * hDrop;
+  mg = m * g;
+  bobR = BOB_R0 * Math.cbrt(Math.max(m, 0.05) / 0.25);
+  arcR = Math.min(0.22, 0.28 * L);
+
+  const startPos = new THREE.Vector3(L * Math.sin(theta0), -L * Math.cos(theta0), 0);
+  const hTop = -L * Math.cos(theta0);
+  const hX = startPos.x + bobR + 0.08;
+  energyX = L + 0.42;
+  barH = L;
+  energyBase = -L;
+  energyOn = overlays.has("energy");
+
+  const bobScale = bobR / BOB_R0;
+  bob.scale.setScalar(bobScale);
+  ghostBob.scale.setScalar(bobScale);
+  ghostBob.position.copy(startPos);
+
+  setLine(vertical, [new THREE.Vector3(0, 0.02, -0.02), new THREE.Vector3(0, -L - 0.08, -0.02)]);
+  const pathCurve = new THREE.EllipseCurve(0, 0, L, L, -Math.PI / 2 - theta0, -Math.PI / 2 + theta0, false, 0);
+  setLine(pathLine, pathCurve.getPoints(64));
+  setLine(ghostString, [new THREE.Vector3(), startPos.clone()]);
+  setLine(bottomMark, [new THREE.Vector3(-0.07, -L, -0.01), new THREE.Vector3(0.07, -L, -0.01)]);
+  setLine(hTickTop, [new THREE.Vector3(hX - 0.04, hTop, 0), new THREE.Vector3(hX + 0.04, hTop, 0)]);
+  setLine(hStem, [new THREE.Vector3(hX, hTop, 0), new THREE.Vector3(hX, -L, 0)]);
+  setLine(hTickBot, [new THREE.Vector3(hX - 0.04, -L, 0), new THREE.Vector3(hX + 0.04, -L, 0)]);
+  setLine(peTrack, [
+    new THREE.Vector3(energyX - barW / 2, energyBase, 0),
+    new THREE.Vector3(energyX + barW / 2, energyBase, 0),
+    new THREE.Vector3(energyX + barW / 2, energyBase + barH, 0),
+    new THREE.Vector3(energyX - barW / 2, energyBase + barH, 0),
+    new THREE.Vector3(energyX - barW / 2, energyBase, 0),
+  ]);
+  setLine(keTrack, [
+    new THREE.Vector3(energyX + 0.11 - barW / 2, energyBase, 0),
+    new THREE.Vector3(energyX + 0.11 + barW / 2, energyBase, 0),
+    new THREE.Vector3(energyX + 0.11 + barW / 2, energyBase + barH, 0),
+    new THREE.Vector3(energyX + 0.11 - barW / 2, energyBase + barH, 0),
+    new THREE.Vector3(energyX + 0.11 - barW / 2, energyBase, 0),
+  ]);
+
+  pathLine.visible = overlays.has("path");
+  heightGroup.visible = overlays.has("height");
+  peTrack.visible = keTrack.visible = energyOn;
+
+  setLabel(labSupport, "fixed support", 0.28, 0.07, true);
+  setLabel(labBottom, "bottom", 0.16, -L - 0.02, true);
+  setLabel(labH, `$h=${hDrop.toFixed(3)}\\,\\mathrm{m}$`, hX + 0.16, (hTop - L) / 2, overlays.has("height"));
+  setLabel(
+    labAns,
+    `$v_{\\mathrm{bottom}}=${vBottom.toFixed(3)}\\,\\mathrm{m/s}$\\quad $T_{\\mathrm{bottom}}=${TBottom.toFixed(3)}\\,\\mathrm{N}$`,
+    0.15,
+    0.22,
+    true,
+  );
+
+  const resetKey = change?.key ?? "";
+  if (!resetKey || resetKey === "L" || resetKey === "m" || resetKey === "theta0" || resetKey === "g" || resetKey === "mode") {
+    theta = theta0;
+    omega = 0;
+    if (mode === "at bottom") {
+      theta = 0;
+      omega = -vBottom / L;
+    } else if (mode === "at release") {
+      theta = theta0;
+      omega = 0;
+    }
+  }
+
+  applyPose();
+}
+
+applyParams(params, { key: "", value: params });
 
 export function update(t, dt) {
   if (mode === "animate") {

@@ -1,6 +1,6 @@
 /**
  * Shared compact number field (Grid Size/Step + params number).
- * Empty while focused; commit on blur or Enter (snap empty → default).
+ * Live-commit parseable values; blur/Enter snap empty → default.
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -47,6 +47,11 @@ export function NumberField({
     return x;
   };
 
+  const live = (raw: string) => {
+    const n = Number(raw);
+    if (Number.isFinite(n)) onCommit(clamp(n));
+  };
+
   const commit = () => {
     focused.current = false;
     const n = Number(draft);
@@ -71,7 +76,10 @@ export function NumberField({
         onFocus={() => {
           focused.current = true;
         }}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          live(e.target.value);
+        }}
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === "Enter") e.currentTarget.blur();
@@ -91,7 +99,10 @@ export function NumberField({
       onFocus={() => {
         focused.current = true;
       }}
-      onChange={(e) => setDraft(e.target.value)}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        live(e.target.value);
+      }}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();

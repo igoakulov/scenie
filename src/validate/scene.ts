@@ -180,7 +180,7 @@ async function validateSceneModule(
     );
     if (!mod) return issues;
 
-    for (const name of ["update", "dispose"] as const) {
+    for (const name of ["update", "dispose", "applyParams"] as const) {
       if (mod[name] !== undefined && typeof mod[name] !== "function") {
         issues.push({ path: `scene.${name}`, message: "want function" });
       }

@@ -1,7 +1,7 @@
 /**
  * Multi-select dropdown (Grid planes + params multiselect).
  * One shared control — do not fork another checkbox dropdown.
- * Flush to parent on close so the open menu is not re-rendered.
+ * Live-flush each toggle; draft while open so the menu is not re-rendered.
  */
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -17,10 +17,6 @@ import { cn } from "@/lib/utils";
 import { MathText } from "../math/renderMath";
 
 export type MultiSelectOption = { value: string; label: string };
-
-function sameSel(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((x, i) => x === b[i]);
-}
 
 export function MultiSelectField({
   label,
@@ -63,7 +59,9 @@ export function MultiSelectField({
     const set = new Set(selected);
     if (checked) set.add(optValue);
     else set.delete(optValue);
-    setDraft(options.map((o) => o.value).filter((v) => set.has(v)));
+    const next = options.map((o) => o.value).filter((v) => set.has(v));
+    setDraft(next);
+    onChange(next);
   };
 
   return (
@@ -74,10 +72,7 @@ export function MultiSelectField({
       <DropdownMenu
         modal={false}
         open={open}
-        onOpenChange={(next) => {
-          if (open && !next && !sameSel(draft, value)) onChange(draft);
-          setOpen(next);
-        }}
+        onOpenChange={setOpen}
       >
         <DropdownMenuTrigger
           render={
