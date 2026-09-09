@@ -65,7 +65,7 @@ describe("show", () => {
     const configDir = await mkdtemp(join(tmpdir(), "scenie-cfg-"));
     const env = { SCENIE_CONFIG_DIR: configDir };
     await runScenie(["init", workspace], env);
-    const r = await runScenie(["show", "missing-scene"], env);
+    const r = await runScenie(["show", "missing-scene", "--no-open"], env);
     assert.equal(r.code, 1);
     await rm(workspace, { recursive: true, force: true });
     await rm(configDir, { recursive: true, force: true });
@@ -81,7 +81,7 @@ describe("show", () => {
       join(workspace, "scenes", "bad"),
       { recursive: true },
     );
-    const r = await runScenie(["show", "bad"], env);
+    const r = await runScenie(["show", "bad", "--no-open"], env);
     assert.equal(r.code, 1);
     await rm(workspace, { recursive: true, force: true });
     await rm(configDir, { recursive: true, force: true });
@@ -113,7 +113,7 @@ describe("show", () => {
     );
 
     let listenUrl = "";
-    const rPromise = runScenie(["show", "demo"], env, {
+    const rPromise = runScenie(["show", "demo", "--no-open"], env, {
       timeoutMs: 15000,
       onStdout(stdout, _stderr, child) {
         const m = stdout.match(/^listen (\S+)/m);
@@ -172,7 +172,7 @@ describe("show", () => {
     await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
 
     let gotListen = false;
-    const rPromise = runScenie(["show"], env, {
+    const rPromise = runScenie(["show", "--no-open"], env, {
       timeoutMs: 12000,
       onStdout(stdout, _stderr, child) {
         const m = stdout.match(/^listen (\S+)/m);

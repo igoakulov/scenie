@@ -9,9 +9,10 @@ import type { LoadHook, ResolveHook } from "node:module";
 import { withParamsPreamble } from "./params-preamble.js";
 
 const require = createRequire(import.meta.url);
-const threeEntry = require.resolve("three");
-const threeUrl = pathToFileURL(threeEntry).href;
-const threeRoot = dirname(dirname(threeEntry));
+// require.resolve("three") is the deprecated CJS build (three.cjs). Scenes
+// import ESM; r186's CJS shim is not a usable namespace (Scene/Group missing).
+const threeRoot = dirname(dirname(require.resolve("three")));
+const threeUrl = pathToFileURL(join(threeRoot, "build", "three.module.js")).href;
 const addonsRoot = join(threeRoot, "examples", "jsm");
 
 function addonUrl(rest: string): string {

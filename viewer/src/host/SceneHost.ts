@@ -223,7 +223,7 @@ export class SceneHost {
       for (const k of Object.keys(c._pointerPositions)) delete c._pointerPositions[k];
     }
     c.state = -1;
-    this.controls.connect();
+    this.controls.connect(this.renderer.domElement);
     this.hostControlsConnected = true;
     this.controls.enabled = true;
     this.controls.update();
@@ -453,7 +453,7 @@ export class SceneHost {
     this.hostNavActive = active;
     if (active) {
       if (!this.hostControlsConnected) {
-        this.controls.connect();
+        this.controls.connect(this.renderer.domElement);
         this.hostControlsConnected = true;
       }
       this.controls.enabled = true;

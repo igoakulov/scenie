@@ -63,16 +63,16 @@ import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 const scene = new THREE.Scene();
 const line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xf97316 }));
 const marker = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 12), new THREE.MeshBasicMaterial({ color: 0x88aaff }));
-const el = document.createElement("div");
-scene.add(line, marker, new CSS2DObject(el));
+const label = new CSS2DObject(document.createElement("div"));
+scene.add(line, marker, label);
 
 export function applyParams(params, change) {
   const pts = parsePoints(params.points ?? ""); // parse string card → values graph can use (lists, pairs, …); do NOT declare params
   // geo from pts; line.rotation.y from params.lift; marker at off_x/off_y/off_z; .visible from layers
-  el.textContent = params.show_label === false ? "" : `${pts.length} pts`; // live chip
+  label.element.textContent = params.show_label === false ? "" : `${pts.length} pts`; // live chip
 }
 applyParams(params, { key: "", value: params });
-// optional: export function update(t, dt) { el.textContent = `$t=${t.toFixed(1)}$`; }
+// optional: export function update(t, dt) { label.element.textContent = `$t=${t.toFixed(1)}$`; }
 // export { camera } — start pose first open ONLY if host.camera true
 // export { scene } — ONLY if >1 Scene
 // assets: new URL("./assets/tex.png", import.meta.url).href
@@ -85,7 +85,7 @@ applyParams(params, { key: "", value: params });
 - `dispose() - only with audio, Worker, URL.createObjectURL. Host already drops the rest.`
 - `dt` = rates/integration; `t` = phase / f(time) (`update` only).
 - NO OrbitControls or other navigation when host.camera is true.
-- Labels = unstyled `CSS2DObject` from `three/addons` (class/pointer-events/KaTeX are host). Empty `textContent` hides. `$…$` / `$$…$$` ok. Set in `applyParams` and/or `el.textContent` in `update`. Do NOT build CSS2DRenderer; do NOT style div.
+- Labels = unstyled `CSS2DObject` from `three/addons` (class/pointer-events/KaTeX are host). Empty `textContent` hides. `$…$` / `$$…$$` ok. `obj.element.textContent` in `applyParams`/`update`. Keep `obj` (not `element`) for Object3D. Do NOT build CSS2DRenderer or style div.
 - NO WebGLRenderer / second WebGL canvas.
 
 ## host.js
