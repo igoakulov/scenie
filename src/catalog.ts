@@ -5,23 +5,13 @@ import { listSceneIds, sceneDir } from "./workspace.js";
 
 export interface SceneListEntry {
   id: string;
-  /** Present only when metadata.json parses cleanly. */
   title?: string;
 }
 
-/**
- * Library rows for the viewer (`GET /api/scenes`).
- * Omits dot-prefixed path segments; does not import scene.js. Missing scenes/ → [].
- */
 export async function listSceneEntries(
   workspace: string,
 ): Promise<SceneListEntry[]> {
-  let ids: string[];
-  try {
-    ids = await listSceneIds(workspace, { library: true });
-  } catch {
-    return [];
-  }
+  const ids = await listSceneIds(workspace, { library: true });
 
   const entries: SceneListEntry[] = [];
   for (const id of ids) {

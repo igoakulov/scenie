@@ -1,7 +1,8 @@
-import { readConfig, requireWorkspace } from "../config.js";
+import { readConfig } from "../config.js";
 import {
   formatIssueLines,
   printFail,
+  printHint,
   printListen,
   printNotFound,
   printSceneBlock,
@@ -15,6 +16,25 @@ import { openBrowser } from "../server/open-browser.js";
 import { validateScene } from "../validate/scene.js";
 import { parseSceneArg, sceneExists } from "../workspace.js";
 
+const SHOW_HOST = "127.0.0.1";
+
+function pageUrl(port: number, id?: string): string {
+  const base = `http://${SHOW_HOST}:${port}`;
+  return id ? `${base}/?scene=${encodeURIComponent(id)}` : `${base}/`;
+}
+
+async function scenieAlreadyServing(port: number): Promise<boolean> {
+  try {
+    const res = await fetch(`http://${SHOW_HOST}:${port}/api/scenes`, {
+      signal: AbortSignal.timeout(800),
+    });
+    if (!res.ok) return false;
+    return Array.isArray(await res.json());
+  } catch {
+    return false;
+  }
+}
+
 export async function cmdShow(
   arg: string | undefined,
   opts: { noOpen?: boolean } = {},
@@ -23,7 +43,7 @@ export async function cmdShow(
   if (!config) {
     throw new Error("no workspace — run: scenie init");
   }
-  const workspace = await requireWorkspace();
+  const workspace = config.workspace;
   printWorkspace(workspace);
 
   let id: string | undefined;
@@ -35,15 +55,18 @@ export async function cmdShow(
     }
     const result = await validateScene(workspace, id);
     if (!result.ok) {
-      // Failures still use @ block + issue lines (same dialect as validate).
       printSceneBlock(workspace, id, formatIssueLines(result.issues));
       printFail(1, 1);
       return 1;
     }
-    // Success: no @ line — id is in the command and listen URL; workspace is enough.
+    const extra = formatIssueLines(result.issues);
+    if (extra.length) {
+      printSceneBlock(workspace, id, ["ok", ...extra]);
+    }
   }
 
   const port = config.port ?? DEFAULT_SHOW_PORT;
+  const url = pageUrl(port, id);
 
   let server;
   try {
@@ -51,19 +74,21 @@ export async function cmdShow(
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
     if (e.code === "EADDRINUSE") {
+      if (await scenieAlreadyServing(port)) {
+        printListen(url);
+        printHint("already serving — open that URL (do not start another show)");
+        if (!opts.noOpen) openBrowser(url);
+        return 0;
+      }
       console.error(`listen ERR port in use: ${port}`);
       return 1;
     }
     throw err;
   }
 
-  const pageUrl = id
-    ? `${server.url.replace(/\/$/, "")}/?scene=${encodeURIComponent(id)}`
-    : server.url;
-
-  printListen(pageUrl);
+  printListen(url);
   if (!opts.noOpen) {
-    openBrowser(pageUrl);
+    openBrowser(url);
   }
 
   await new Promise<void>((resolve) => {
@@ -82,7 +107,6 @@ export async function cmdShow(
     process.on("SIGTERM", shutdown);
   });
 
-  // Clean stop (Ctrl+C / SIGTERM) is success.
   process.exitCode = 0;
   return 0;
 }

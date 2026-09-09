@@ -210,10 +210,8 @@ function validateCard(
 
   wantNonEmptyString(raw.title, `${path}.title`, issues);
 
-  if (raw.id !== undefined) {
-    if (!wantNonEmptyString(raw.id, `${path}.id`, issues)) {
-      /* already recorded */
-    } else if (seenCardIds.has(raw.id)) {
+  if (raw.id !== undefined && wantNonEmptyString(raw.id, `${path}.id`, issues)) {
+    if (seenCardIds.has(raw.id)) {
       push(issues, `${path}.id`, `duplicate "${raw.id}"`);
     } else {
       seenCardIds.add(raw.id);
@@ -240,11 +238,10 @@ function validateCard(
   }
 
   if (issues.length > before) return undefined;
-  if (typeof raw.title !== "string") return undefined;
 
   const card: ParamCard = {
     type: "card",
-    title: raw.title,
+    title: raw.title as string,
     children,
   };
   if (typeof raw.id === "string" && raw.id.trim() !== "") {
@@ -386,9 +383,8 @@ function validateSelect(
 
   wantNonEmptyString(raw.label, `${path}.label`, issues);
   wantStringOptions(raw.options, path, issues);
-  if (!wantString(raw.default, `${path}.default`, issues)) {
-    /* recorded */
-  } else if (
+  if (
+    wantString(raw.default, `${path}.default`, issues) &&
     Array.isArray(raw.options) &&
     raw.options.every((o) => typeof o === "string") &&
     !raw.options.includes(raw.default)

@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AppConfig } from "./types.js";
 
-export function getConfigDir(): string {
+function getConfigDir(): string {
   if (process.env.SCENIE_CONFIG_DIR) {
     return process.env.SCENIE_CONFIG_DIR;
   }
@@ -14,7 +14,7 @@ export function getConfigDir(): string {
   return join(homedir(), ".config", "scenie");
 }
 
-export function getConfigPath(): string {
+function getConfigPath(): string {
   return join(getConfigDir(), "config.json");
 }
 

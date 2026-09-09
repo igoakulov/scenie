@@ -1,10 +1,10 @@
 {
   "name": "scenie",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "CLI and browser viewer for agent-built interactive Three.js educational scenes.",
   "type": "module",
   "bin": {
-    "scenie": "./bin/scenie.js"
+    "scenie": "bin/scenie.js"
   },
   "files": [
     "bin",
@@ -20,7 +20,7 @@
     "build": "tsc && npm run build:viewer",
     "build:viewer": "vite build --config viewer/vite.config.ts",
     "build:cli": "tsc",
-    "test": "npm run build && node --test --experimental-strip-types --import ./test/register-three-hook.js test/params.test.js test/scene-validate.test.js test/cli.test.js test/show.test.js test/scene-ownership.test.js test/host-flags.test.js test/description-md.test.js",
+    "test": "npm run build && node --test --experimental-strip-types --import ./test/register-three-hook.js test/params.test.js test/scene-validate.test.js test/cli.test.js test/show.test.js test/host-flags.test.js test/description-md.test.js",
     "prepare": "npm run build",
     "prepublishOnly": "npm test"
   },

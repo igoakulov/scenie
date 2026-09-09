@@ -1,7 +1,6 @@
 import { relative } from "node:path";
 import { sceneDir } from "./workspace.js";
 
-/** fromConfig → `workspace (from config) <abs>`; else `workspace <abs>`. */
 export function printWorkspace(workspace: string, fromConfig = false): void {
   console.log(
     fromConfig ? `workspace (from config) ${workspace}` : `workspace ${workspace}`,
@@ -16,11 +15,6 @@ export function printWorkspaceErr(message: string): void {
   console.log(`workspace ERR ${message}`);
 }
 
-/**
- * One scene block — same shape for list, validate, show gate.
- *   @ scenes/<id>
- *   - detail
- */
 export function printSceneBlock(
   workspace: string,
   id: string,
@@ -33,7 +27,6 @@ export function printSceneBlock(
   }
 }
 
-/** `parseSceneArg` failed or folder missing. */
 export function printNotFound(workspace: string, arg: string, id?: string): void {
   if (id) printSceneBlock(workspace, id, ["ERR not found"]);
   else {

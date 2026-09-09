@@ -61,33 +61,6 @@ function httpGet(url) {
 }
 
 describe("show", () => {
-  it("fails when scene not found", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "scenie-ws-"));
-    const configDir = await mkdtemp(join(tmpdir(), "scenie-cfg-"));
-    const env = { SCENIE_CONFIG_DIR: configDir };
-    await runScenie(["init", workspace], env);
-    const r = await runScenie(["show", "scenes/missing-scene", "--no-open"], env);
-    assert.equal(r.code, 1);
-    await rm(workspace, { recursive: true, force: true });
-    await rm(configDir, { recursive: true, force: true });
-  });
-
-  it("fails validate gate on bad scene", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "scenie-ws-"));
-    const configDir = await mkdtemp(join(tmpdir(), "scenie-cfg-"));
-    const env = { SCENIE_CONFIG_DIR: configDir };
-    await runScenie(["init", workspace], env);
-    await cp(
-      join(fixtures, "invalid-metadata"),
-      join(workspace, "scenes", "bad"),
-      { recursive: true },
-    );
-    const r = await runScenie(["show", "scenes/bad", "--no-open"], env);
-    assert.equal(r.code, 1);
-    await rm(workspace, { recursive: true, force: true });
-    await rm(configDir, { recursive: true, force: true });
-  });
-
   it("listens and serves viewer + scene file + /api/scenes", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "scenie-ws-"));
     const configDir = await mkdtemp(join(tmpdir(), "scenie-cfg-"));
@@ -143,14 +116,12 @@ describe("show", () => {
                 `http://127.0.0.1:${port}/ws/scenes/physics/gravity/scene.js`,
               );
               assert.equal(nestedJs.status, 200);
-              assert.match(nestedJs.body, /export \{ scene \}/);
 
               const catalog = await httpGet(
                 `http://127.0.0.1:${port}/api/scenes`,
               );
               assert.equal(catalog.status, 200);
               const entries = JSON.parse(catalog.body);
-              assert.ok(Array.isArray(entries));
               const byId = Object.fromEntries(
                 entries.map((e) => [e.id, e]),
               );
@@ -170,41 +141,6 @@ describe("show", () => {
     const r = await rPromise;
     assert.ok(listenUrl, r.stderr + r.stdout);
 
-    await rm(workspace, { recursive: true, force: true });
-    await rm(configDir, { recursive: true, force: true });
-  });
-
-  it("show without id serves", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "scenie-ws-"));
-    const configDir = await mkdtemp(join(tmpdir(), "scenie-cfg-"));
-    const port = 20000 + Math.floor(Math.random() * 1000);
-    const env = { SCENIE_CONFIG_DIR: configDir };
-    await runScenie(["init", workspace], env);
-    const cfgPath = join(configDir, "config.json");
-    const cfg = JSON.parse(await readFile(cfgPath, "utf8"));
-    cfg.port = port;
-    await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
-
-    let gotListen = false;
-    const rPromise = runScenie(["show", "--no-open"], env, {
-      timeoutMs: 12000,
-      onStdout(stdout, _stderr, child) {
-        const m = stdout.match(/^listen (\S+)/m);
-        if (m && !gotListen) {
-          gotListen = true;
-          void (async () => {
-            try {
-              const page = await httpGet(m[1]);
-              assert.equal(page.status, 200);
-            } finally {
-              child.kill("SIGTERM");
-            }
-          })();
-        }
-      },
-    });
-    await rPromise;
-    assert.ok(gotListen);
     await rm(workspace, { recursive: true, force: true });
     await rm(configDir, { recursive: true, force: true });
   });

@@ -4,32 +4,7 @@ import { join, resolve } from "node:path";
 /** Path segment: optional leading `.` then kebab-case (hidden from Library). */
 const SCENE_ID = /^\.?[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-/**
- * Names that are never scene folders (OS / VCS junk under `scenes/`).
- * Compared case-insensitively. Files like `.DS_Store` are already skipped
- * (we only list directories); listed here if they ever appear as dirs.
- */
-const IGNORED_SCENE_ENTRIES = new Set(
-  [
-    ".ds_store",
-    ".git",
-    ".svn",
-    ".hg",
-    ".bzr",
-    "__macosx",
-    "thumbs.db",
-    "desktop.ini",
-    "node_modules",
-    ".spotlight-v100",
-    ".trashes",
-    ".fseventsd",
-    ".temporaryitems",
-    ".apdisk",
-    ".appledouble",
-    ".lsoverride",
-    "lost+found",
-  ].map((s) => s.toLowerCase()),
-);
+const IGNORED_SCENE_ENTRIES = new Set([".git", ".svn", ".hg", ".bzr"]);
 
 /** Posix id relative to scenes/ — kebab-case segments, optional leading `.` per segment. */
 export function isSceneId(id: string): boolean {
@@ -97,15 +72,7 @@ async function isSceneLeaf(dir: string): Promise<boolean> {
   return false;
 }
 
-/**
- * Scene folders under scenes/ (posix ids, nested ok).
- * Missing scenes/ → [] (callers that care about layout use hasScenesDir).
- *
- * A scene is a kebab-case directory that contains metadata.json or scene.js;
- * do not recurse into it. Other kebab-case dirs are organizers and are walked.
- * Skips OS/VCS junk and directory symlinks. Dot-prefixed dirs are included
- * unless `library: true`.
- */
+/** kebab-case dirs with metadata.json or scene.js; organizers are walked. Missing scenes/ → []. */
 export async function listSceneIds(
   workspace: string,
   options?: ListSceneIdsOptions,
@@ -150,8 +117,9 @@ export async function sceneExists(
 ): Promise<boolean> {
   if (!isSceneId(id)) return false;
   try {
-    const s = await stat(sceneDir(workspace, id));
-    return s.isDirectory();
+    const dir = sceneDir(workspace, id);
+    const s = await stat(dir);
+    return s.isDirectory() && (await isSceneLeaf(dir));
   } catch {
     return false;
   }

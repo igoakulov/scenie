@@ -37,8 +37,8 @@ async function main(): Promise<number> {
       case "show":
         return await cmdShow(positionals[0], { noOpen });
       default:
-        console.error(`Unknown command: ${command}`);
-        console.error("Run `scenie help` for usage.");
+        console.error(`unknown command: ${command}`);
+        console.error("hint: scenie help");
         return 1;
     }
   } catch (err) {

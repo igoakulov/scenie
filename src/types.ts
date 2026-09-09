@@ -122,7 +122,6 @@ export type ParamsNode =
 export interface ParamValidationIssue {
   message: string;
   key?: string;
-  /** Optional card id for UI association (replaces old groupId). */
   cardId?: string;
 }
 
@@ -134,7 +133,6 @@ export interface AppConfig {
 export interface ValidationIssue {
   path: string;
   message: string;
-  /** Omit = error. Warnings do not fail validate or block show. */
   level?: "error" | "warning";
 }
 

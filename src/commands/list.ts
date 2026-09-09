@@ -10,12 +10,10 @@ export async function cmdList(): Promise<number> {
   printWorkspace(workspace);
 
   if (!(await hasScenesDir(workspace))) {
-    // Not the same as empty scenes/ — layout missing (wrong path or never inited).
     printHint("no scenes/ under workspace — check path or: scenie init");
-    return 0;
+    return 1;
   }
 
-  // Full discovery (incl. `.my-scene` / nested); viewer Library uses { library: true }.
   const ids = await listSceneIds(workspace);
   if (ids.length === 0) {
     return 0;

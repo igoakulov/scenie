@@ -1,7 +1,3 @@
-/**
- * Shared compact number field (Grid Size/Step + params number).
- * min/max/step → slider + input; else live-commit text (blur/Enter snap empty → default).
- */
 import { useEffect, useId, useRef, useState } from "react";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -128,12 +124,12 @@ export function NumberField({
   );
 
   const input = unit ? (
-    <InputGroup className={spec ? "w-auto max-w-[10rem] shrink-0" : undefined}>
+    <InputGroup className={spec ? "w-auto max-w-40 shrink-0" : undefined}>
       <InputGroupInput
         id={id}
         type="text"
         inputMode="decimal"
-        className={cn(inputClass, spec && "w-[3.5rem] flex-none")}
+        className={cn(inputClass, spec && "w-14 flex-none")}
         value={draft}
         onFocus={() => {
           focused.current = true;

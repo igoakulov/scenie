@@ -1,20 +1,9 @@
-/**
- * Soft-read of scene params() for Explore UI.
- * Unknown types are skipped (CLI rejects them; viewer stays resilient).
- * Types + resolveLabelValue: single source in package `src/`.
- */
+/** Soft-read params() for Explore. Unknown types skipped (CLI rejects them). */
 
 export type {
   LabelValue,
   ParamValue,
   ParamsNode,
-  ParamCard as CardNode,
-  NoteParamNode as NoteNode,
-  LabelParamNode as LabelNode,
-  NumberParamField as NumberNode,
-  BooleanParamField as BooleanNode,
-  SelectParamField as SelectNode,
-  MultiselectParamField as MultiselectNode,
   StringParamField as StringNode,
 } from "../../../src/types";
 

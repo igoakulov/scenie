@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ChevronRightIcon, FileIcon, FolderIcon } from "lucide-react";
 import { userFacingError } from "../host/viewerError";
 import { cn } from "@/lib/utils";
-import { CopyHitbox } from "./CopyHitbox";
+import { CopyHitbox, CopyIconButton } from "./CopyHitbox";
 
 export interface SceneListEntry {
   id: string;
@@ -33,7 +33,8 @@ const CRUMB = cn(
 async function fetchSceneList(): Promise<SceneListEntry[]> {
   const res = await fetch("/api/scenes", { cache: "no-store" });
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
+    const body = (await res.text()).trim();
+    throw new Error(body || `HTTP ${res.status}`);
   }
   const data = (await res.json()) as unknown;
   if (!Array.isArray(data)) {
@@ -47,8 +48,6 @@ async function fetchSceneList(): Promise<SceneListEntry[]> {
       (row as SceneListEntry).id.length > 0,
   );
 }
-
-
 
 function childrenAt(entries: SceneListEntry[], cwd: string) {
   const prefix = cwd ? `${cwd}/` : "";
@@ -199,15 +198,22 @@ function EmptyLibrary() {
   );
 }
 
-export function LibraryPanel({ onOpen }: { onOpen: (id: string) => void }) {
+export function LibraryPanel({
+  onOpen,
+  active = true,
+}: {
+  onOpen: (id: string) => void;
+  active?: boolean;
+}) {
   const [entries, setEntries] = useState<SceneListEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cwd, setCwd] = useState("");
 
   useEffect(() => {
+    if (!active) return;
     let cancelled = false;
-    setError(null);
-    void (async () => {
+    const load = async () => {
+      setError(null);
       try {
         const list = await fetchSceneList();
         if (!cancelled) setEntries(list);
@@ -217,11 +223,17 @@ export function LibraryPanel({ onOpen }: { onOpen: (id: string) => void }) {
           setError(userFacingError(err));
         }
       }
-    })();
+    };
+    void load();
+    const onFocus = () => {
+      void load();
+    };
+    window.addEventListener("focus", onFocus);
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [active]);
 
   const hasList = entries !== null && entries.length > 0;
   const { folderRows, scenes } = hasList
@@ -231,12 +243,12 @@ export function LibraryPanel({ onOpen }: { onOpen: (id: string) => void }) {
   let body: ReactNode;
   if (error) {
     body = (
-      <p
-        className="sheet-selectable m-0 text-xs text-muted-foreground"
-        title={error}
-      >
-        {error}
-      </p>
+      <div className="group flex min-w-0 items-start gap-1">
+        <p className="sheet-selectable m-0 min-w-0 flex-1 whitespace-pre-line text-xs text-muted-foreground">
+          {error}
+        </p>
+        <CopyIconButton text={error} className="mt-0.5" />
+      </div>
     );
   } else if (entries === null) {
     body = <p className="m-0 text-xs text-muted-foreground">Loading…</p>;

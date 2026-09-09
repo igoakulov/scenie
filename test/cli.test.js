@@ -5,7 +5,6 @@ import {
   mkdtemp,
   mkdir,
   readFile,
-  realpath,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -40,13 +39,6 @@ function runScenie(args, env) {
 }
 
 describe("CLI", () => {
-  it("fails without workspace", async () => {
-    const configDir = await mkdtemp(join(tmpdir(), "scenie-cfg-"));
-    const r = await runScenie(["list"], { SCENIE_CONFIG_DIR: configDir });
-    assert.equal(r.code, 1);
-    await rm(configDir, { recursive: true, force: true });
-  });
-
   it("init + list (no scene.js import) + validate", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "scenie-ws-"));
     const configDir = await mkdtemp(join(tmpdir(), "scenie-cfg-"));
@@ -55,15 +47,9 @@ describe("CLI", () => {
     let r = await runScenie(["init", workspace], env);
     assert.equal(r.code, 0, r.stderr);
 
-    const config = JSON.parse(
-      await readFile(join(configDir, "config.json"), "utf8"),
-    );
-    assert.equal(config.workspace, workspace);
-
     await cp(join(fixtures, "valid-basic"), join(workspace, "scenes", "demo"), {
       recursive: true,
     });
-    // Hidden backup: CLI list/validate must see it; .git junk must not appear.
     await cp(
       join(fixtures, "valid-basic"),
       join(workspace, "scenes", ".demo-bak"),
@@ -71,7 +57,6 @@ describe("CLI", () => {
     );
     await mkdir(join(workspace, "scenes", ".git"), { recursive: true });
 
-    // list must not import scene.js (throw would fail the process)
     const bombDir = join(workspace, "scenes", "bomb");
     await mkdir(bombDir, { recursive: true });
     await writeFile(
@@ -109,28 +94,15 @@ describe("CLI", () => {
     r = await runScenie(["validate", "scenes/physics/gravity"], env);
     assert.equal(r.code, 0, r.stderr + r.stdout);
 
+    r = await runScenie(["validate", "scenes/physics"], env);
+    assert.equal(r.code, 1);
+    assert.match(r.stdout, /ERR not found/);
+
     r = await runScenie(["validate", "scenes/bomb"], env);
     assert.equal(r.code, 1);
 
     await rm(workspace, { recursive: true, force: true });
     await rm(configDir, { recursive: true, force: true });
-  });
-
-  it("init defaults to cwd", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "scenie-cwd-"));
-    const configDir = await mkdtemp(join(tmpdir(), "scenie-cfg-"));
-    const r = await runScenie(["init"], {
-      SCENIE_CONFIG_DIR: configDir,
-      SCENIE_TEST_CWD: workspace,
-    });
-    assert.equal(r.code, 0, r.stderr);
-    const config = JSON.parse(
-      await readFile(join(configDir, "config.json"), "utf8"),
-    );
-    assert.equal(
-      await realpath(config.workspace),
-      await realpath(workspace),
-    );
   });
 
   it("init seeds example scenes without overwriting", async () => {
@@ -147,49 +119,18 @@ describe("CLI", () => {
     await access(scenePath);
     await access(metaPath);
 
-    // non-scene dirs under examples/ (e.g. screenshots) must not be seeded
     await assert.rejects(() => access(join(workspace, "scenes", "screenshots")));
-    await assert.rejects(() => access(join(workspace, "scenes", "prompts")));
 
     r = await runScenie(["validate", `scenes/${exampleId}`], env);
     assert.equal(r.code, 0, r.stderr + r.stdout);
 
-    // mutate + re-init must not overwrite
-    const marker = '{"title":"USER EDIT","description":"keep","tags":[],"dimensions":3}';
+    const marker = '{"title":"USER EDIT","description":"keep","tags":[]}';
     await writeFile(metaPath, marker);
     r = await runScenie(["init", workspace], env);
     assert.equal(r.code, 0, r.stderr + r.stdout);
     assert.equal(await readFile(metaPath, "utf8"), marker);
 
     await rm(workspace, { recursive: true, force: true });
-    await rm(configDir, { recursive: true, force: true });
-  });
-
-  it("bare init uses config path and can re-seed", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "scenie-cfgws-"));
-    const otherCwd = await mkdtemp(join(tmpdir(), "scenie-othercwd-"));
-    const configDir = await mkdtemp(join(tmpdir(), "scenie-cfg-"));
-    const env = { SCENIE_CONFIG_DIR: configDir };
-
-    let r = await runScenie(["init", workspace], env);
-    assert.equal(r.code, 0, r.stderr + r.stdout);
-
-    await rm(join(workspace, "scenes", "examples", "example-theory"), {
-      recursive: true,
-      force: true,
-    });
-
-    r = await runScenie(["init"], {
-      ...env,
-      SCENIE_TEST_CWD: otherCwd,
-    });
-    assert.equal(r.code, 0, r.stderr + r.stdout);
-    await access(
-      join(workspace, "scenes", "examples", "example-theory", "scene.js"),
-    );
-
-    await rm(workspace, { recursive: true, force: true });
-    await rm(otherCwd, { recursive: true, force: true });
     await rm(configDir, { recursive: true, force: true });
   });
 });

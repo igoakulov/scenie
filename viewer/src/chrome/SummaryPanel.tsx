@@ -40,19 +40,11 @@ export function SummaryPanel({
   return (
     <div className="summary-panel grid min-w-0 grid-cols-[minmax(0,1fr)_1.25rem] gap-x-1 gap-y-2.5 text-xs/relaxed">
       <div className={ROW}>
-        <PathCrumbs rel={id} />
-        <CopyIconButton text={path} />
-      </div>
-
-      <div className={ROW}>
         <div className="flex min-w-0 items-center gap-1">
-          <h1
-            className="m-0 min-w-0 flex-1 truncate text-sm font-medium tracking-tight"
-            title={metadata.title}
-          >
-            {metadata.title}
-          </h1>
-          {onPresent && <CopyIconButton text={metadata.title} />}
+          <div className="min-w-0 flex-1">
+            <PathCrumbs rel={id} />
+          </div>
+          {onPresent && <CopyIconButton text={path} />}
         </div>
         {onPresent ? (
           <button
@@ -65,8 +57,18 @@ export function SummaryPanel({
             <Maximize2Icon />
           </button>
         ) : (
-          <CopyIconButton text={metadata.title} />
+          <CopyIconButton text={path} />
         )}
+      </div>
+
+      <div className={ROW}>
+        <h1
+          className="m-0 min-w-0 truncate text-sm font-medium tracking-tight"
+          title={metadata.title}
+        >
+          {metadata.title}
+        </h1>
+        <CopyIconButton text={metadata.title} />
       </div>
 
       {metadata.description.trim().length > 0 && (

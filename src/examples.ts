@@ -19,7 +19,7 @@ export function packageRoot(): string {
   }
 }
 
-export function examplesDir(root = packageRoot()): string {
+function examplesDir(root = packageRoot()): string {
   return join(root, "examples");
 }
 
@@ -35,7 +35,7 @@ async function isScenePackageDir(dir: string): Promise<boolean> {
 }
 
 /** Scene package ids under package examples/ (dirs with metadata.json, scene.js, host.js). */
-export async function listExampleSceneIds(
+async function listExampleSceneIds(
   root = packageRoot(),
 ): Promise<string[]> {
   const dir = examplesDir(root);
@@ -77,7 +77,7 @@ export async function seedExampleScenes(
       const st = await stat(dest);
       if (st.isDirectory()) continue;
     } catch {
-      // missing → copy
+      /* missing */
     }
     await mkdir(dirname(dest), { recursive: true });
     const src = join(examplesDir(root), id);

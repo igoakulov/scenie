@@ -10,30 +10,21 @@ export function renderMathToHtml(text: string): string {
   if (!text) return "";
 
   // Display math first
-  let out = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex: string) => {
-    try {
-      return katex.renderToString(tex.trim(), {
-        displayMode: true,
-        throwOnError: false,
-        strict: "ignore",
-      });
-    } catch {
-      return `$$${tex}$$`;
-    }
-  });
+  let out = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex: string) =>
+    katex.renderToString(tex.trim(), {
+      displayMode: true,
+      throwOnError: false,
+      strict: "ignore",
+    }),
+  );
 
-  // Inline math — skip escaped \$
-  out = out.replace(/(?<!\\)\$([^$\n]+?)(?<!\\)\$/g, (_, tex: string) => {
-    try {
-      return katex.renderToString(tex.trim(), {
-        displayMode: false,
-        throwOnError: false,
-        strict: "ignore",
-      });
-    } catch {
-      return `$${tex}$`;
-    }
-  });
+  out = out.replace(/(?<!\\)\$([^$\n]+?)(?<!\\)\$/g, (_, tex: string) =>
+    katex.renderToString(tex.trim(), {
+      displayMode: false,
+      throwOnError: false,
+      strict: "ignore",
+    }),
+  );
 
   out = out.replace(/\\\$/g, "$");
   return out;

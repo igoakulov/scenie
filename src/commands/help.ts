@@ -23,13 +23,13 @@ export async function cmdHelp(): Promise<number> {
 
 cmds:
   init [path] [--force]  config workspace (path | existing | cwd); seeds scenes/examples/ if missing
-  list                   workspace + scene titles (grouped by path)
+  list                   workspace + @ scenes/<id> + title
   validate [path]        one or all (exit 1 if issues); path = scenes/<id>
   show [path] [--no-open]  serve viewer; validate first if path; --no-open skips browser; Ctrl+C stop
   help
 
 loop: list → write scenes/<id>/ → validate → show
-  port busy on show → refresh browser or free port + re-show (do not probe HTTP)
+  port busy → existing show already serving; open that listen URL (?scene=) — do not start another
 
 config: ~/.config/scenie/config.json  (win: %APPDATA%\\scenie\\config.json)
   keys: workspace, optional port (default 3471)
@@ -37,7 +37,7 @@ layout: <workspace>/scenes/<id>/{metadata.json,scene.js,host.js?,assets?/}
   id: kebab-case path (nested dirs ok); leading . = hidden from Library (CLI list/validate/show still work)
 meta: title, description, tags[] required
 scene: export { scene } (THREE.Scene or constructed graph)
-host: optional host.js — export const host { lights, helpers, camera, playback, view:"2d"|"3d" } (omit file = 3d / all true)
+host: host.js optional for imported scenes; agents always write it — export const host { lights, helpers, camera, playback, view:"2d"|"3d" } (omit = 3d / all true)
 
 output:
   workspace <abs>   or  workspace (from config) <abs>  (bare init)

@@ -54,8 +54,6 @@ export function renderLeaf(
         />
       );
     case "label":
-      // px-2: align name/value with text inside bordered inputs (not the outer border).
-      // Value wraps (full text); not truncate — computed labels can be long.
       return (
         <div className="flex min-w-0 items-start justify-between gap-2 px-2 text-xs/relaxed">
           <MathText

@@ -1,7 +1,3 @@
-/**
- * Viewport banner: one string, shown and copied as-is.
- */
-
 export function userFacingError(
   err: unknown,
   sceneId?: string | null,
@@ -12,20 +8,32 @@ export function userFacingError(
   const who = id ? `Scene ${id}` : "This scene";
   const tagged = (rest: string) => (id ? `${who}: ${rest}` : rest);
 
-  const missingFile = msg.match(/\b(metadata\.json|scene\.js): missing\b/i)
-    ?? msg.match(/\b(metadata\.json|scene\.js).*HTTP 404\b/i);
+  const friendly = friendlyLine(msg, id, who, tagged);
+  if (friendly === msg) return friendly;
+  return `${friendly}\n${msg}`;
+}
+
+function friendlyLine(
+  msg: string,
+  id: string | undefined,
+  who: string,
+  tagged: (rest: string) => string,
+): string {
+  const missingFile =
+    msg.match(/\b(metadata\.json|scene\.js|host\.js): missing\b/i) ??
+    msg.match(/\b(metadata\.json|scene\.js|host\.js).*HTTP 404\b/i);
   if (missingFile) {
     const file = missingFile[1];
     return id
-      ? `Cannot find scenes/${id}/${file}. Verify scene path and files.`
-      : `Cannot find ${file}. Verify scene path and files.`;
+      ? `Cannot find scenes/${id}/${file}.`
+      : `Cannot find ${file}.`;
   }
   const badImport = msg.match(/\b(scene\.js|host\.js): import failed\b/i);
   if (badImport) {
-    return `${who} couldn't load ${badImport[1]} (syntax error or bad import).`;
+    return `${who} couldn't load ${badImport[1]} — it has a syntax error or a bad import.`;
   }
   if (/\b(metadata\.json|scene\.js|host\.js): unreachable\b/i.test(msg)) {
-    return "Couldn't reach the local server — is `scenie show` still running?";
+    return "Couldn't reach the local server. Is scenie show still running?";
   }
   if (/\bHTTP 404\b/i.test(msg)) {
     return id
@@ -33,7 +41,7 @@ export function userFacingError(
       : "A file for this scene is missing.";
   }
   if (/\bHTTP 5\d\d\b/i.test(msg)) {
-    return "The local server returned an error — is `scenie show` still running?";
+    return "The local server returned an error. Is scenie show still running?";
   }
   if (/\bHTTP \d{3}\b/i.test(msg)) {
     return "Couldn't load scene files from the server.";
@@ -42,19 +50,19 @@ export function userFacingError(
     /failed to fetch|networkerror|load failed/i.test(msg) &&
     !/module/i.test(msg)
   ) {
-    return "Couldn't reach the local server — is `scenie show` still running?";
+    return "Couldn't reach the local server. Is scenie show still running?";
   }
 
-  if (/metadata\.json.*missing title|missing title\/description/i.test(msg)) {
+  if (/metadata\.json.*missing title|missing title\/description|meta\.title/i.test(msg)) {
     return tagged("metadata.json needs a title and description.");
   }
-  if (/metadata\.json.*tags/i.test(msg)) {
-    return tagged("metadata.json tags must be a list of strings.");
+  if (/metadata\.json.*tags|meta\.tags/i.test(msg)) {
+    return tagged("metadata.json tags must be a list of words.");
   }
   if (/metadata\.json.*invalid json|unexpected token|json\.parse/i.test(msg)) {
     return tagged("metadata.json isn't valid JSON.");
   }
-  if (/metadata\.json/i.test(msg)) {
+  if (/metadata\.json|meta\./i.test(msg)) {
     return tagged("Couldn't read metadata.json.");
   }
 
@@ -64,6 +72,11 @@ export function userFacingError(
   if (/bindInput want function/i.test(msg)) {
     return tagged(
       "host.js must export a bindInput function when host.camera is false.",
+    );
+  }
+  if (/applyParams.*want function when params/i.test(msg)) {
+    return tagged(
+      "scene.js must export applyParams when the scene has editable cards.",
     );
   }
 
@@ -90,43 +103,28 @@ export function userFacingError(
   }
 
   if (/^bindInput\(\) threw:/i.test(msg)) {
-    return tagged(
-      `bindInput() failed: ${stripPrefix(msg, /^bindInput\(\) threw:\s*/i)}.`,
-    );
+    return tagged("bindInput() failed.");
   }
   if (/^update\(\) threw:/i.test(msg)) {
-    return tagged(
-      `update() failed: ${stripPrefix(msg, /^update\(\) threw:\s*/i)}.`,
-    );
+    return tagged("The scene's update() function failed.");
   }
   if (/^applyParams threw:/i.test(msg)) {
-    return tagged(
-      `applyParams failed: ${stripPrefix(msg, /^applyParams threw:\s*/i)}.`,
-    );
+    return tagged("applyParams failed.");
   }
   if (/^updateView\(\) threw:/i.test(msg)) {
-    return tagged(
-      `updateView() failed: ${stripPrefix(msg, /^updateView\(\) threw:\s*/i)}.`,
-    );
+    return tagged("updateView() failed.");
   }
   if (/^params\(\) threw:/i.test(msg)) {
-    return tagged(
-      `host.js params() failed: ${stripPrefix(msg, /^params\(\) threw:\s*/i)}.`,
-    );
+    return tagged("host.js params() failed.");
   }
   if (/^onParamsChange threw:/i.test(msg)) {
-    return tagged(
-      `onParamsChange failed: ${stripPrefix(msg, /^onParamsChange threw:\s*/i)}.`,
-    );
+    return tagged("onParamsChange failed.");
   }
 
   if (/^want array$/i.test(msg) || /^HTTP \d+$/i.test(msg)) {
     return "Couldn't load the scene list.";
   }
 
-  if (msg.length > 220) {
-    return `${msg.slice(0, 200).trim()}…`;
-  }
   if (!/[.!?]$/.test(msg)) {
     return tagged(`${msg}.`);
   }

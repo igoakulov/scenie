@@ -123,7 +123,7 @@ export async function validateScene(
         });
       }
     } catch {
-      // flag shape already reported from validateHostModule
+      /* host export issues already recorded */
     }
   }
 
@@ -163,6 +163,23 @@ function isObject3DLike(value: unknown): boolean {
   );
 }
 
+function installRafStub(): { called: () => boolean; restore: () => void } {
+  const g = globalThis as { requestAnimationFrame?: typeof requestAnimationFrame };
+  const prev = g.requestAnimationFrame;
+  let called = false;
+  g.requestAnimationFrame = (() => {
+    called = true;
+    return 0;
+  }) as typeof requestAnimationFrame;
+  return {
+    called: () => called,
+    restore() {
+      if (prev) g.requestAnimationFrame = prev;
+      else delete g.requestAnimationFrame;
+    },
+  };
+}
+
 async function validateSceneModule(
   scenePath: string,
   opts: { injectParams: boolean; paramDefaults: Record<string, unknown> },
@@ -171,6 +188,7 @@ async function validateSceneModule(
   const prev = g.__scenieParams;
   g.__scenieParams = opts.injectParams ? opts.paramDefaults : {};
   const unstub = installDocumentStub();
+  const raf = installRafStub();
   const cap = installSceneCapture(THREE.Scene);
   try {
     const { mod, issues } = await importModule(
@@ -186,6 +204,13 @@ async function validateSceneModule(
       }
     }
 
+    if (opts.injectParams && typeof mod.applyParams !== "function") {
+      issues.push({
+        path: "scene.applyParams",
+        message: "want function when params() has writable fields",
+      });
+    }
+
     if (!isObject3DLike(mod.scene) && cap.get() == null) {
       issues.push({
         path: "scene",
@@ -193,9 +218,18 @@ async function validateSceneModule(
       });
     }
 
+    if (raf.called()) {
+      issues.push({
+        path: "scene",
+        message: "requestAnimationFrame at load; host owns the frame loop",
+        level: "warning",
+      });
+    }
+
     return issues;
   } finally {
     cap.restore();
+    raf.restore();
     unstub();
     if (prev === undefined) delete g.__scenieParams;
     else g.__scenieParams = prev;

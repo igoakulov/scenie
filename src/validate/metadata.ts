@@ -2,10 +2,9 @@ import type { SceneMetadata, ValidationIssue } from "../types.js";
 
 export function parseMetadata(
   raw: unknown,
-  filePath = "meta",
 ): { metadata?: SceneMetadata; issues: ValidationIssue[] } {
   const issues: ValidationIssue[] = [];
-  const p = filePath === "metadata.json" ? "meta" : filePath;
+  const p = "meta";
 
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     issues.push({ path: p, message: "want object" });

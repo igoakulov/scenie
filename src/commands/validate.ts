@@ -30,7 +30,7 @@ export async function cmdValidate(arg: string | undefined): Promise<number> {
   } else {
     if (!(await hasScenesDir(workspace))) {
       printHint("no scenes/ under workspace — check path or: scenie init");
-      return 0;
+      return 1;
     }
     ids = await listSceneIds(workspace);
     if (ids.length === 0) {

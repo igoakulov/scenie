@@ -7,11 +7,7 @@ import {
   stripForeignCss2dOverlays,
   syncAnnotationTexts,
 } from "./annotations";
-import {
-  DEFAULT_GRID,
-  GridController,
-  type GridState,
-} from "./grid";
+import { GridController, type GridState } from "./grid";
 import type { ParamValue } from "./defaults";
 import {
   importSceneGraph,
@@ -140,10 +136,6 @@ export class SceneHost {
     return { ...this.flags };
   }
 
-  getGridState(): GridState {
-    return this.grid.getState();
-  }
-
   setGridState(partial: Partial<GridState>): void {
     this.grid.setState(partial);
   }
@@ -241,7 +233,14 @@ export class SceneHost {
     this.lastFrameMs = null;
     this.applyCameraMode(this.view);
     this.applyHostPolicy();
-    this.resetView();
+    if (this.flags.camera) {
+      this.resetView();
+    } else {
+      this.camera.position.set(0, 0, 0);
+      this.camera.up.set(0, 1, 0);
+      this.camera.lookAt(0, 0, -1);
+      this.camera.updateProjectionMatrix();
+    }
     await this.mountGraph({ adoptStartCamera: true, bindInput: true });
     this.playing = this.hasUpdate() || this.isIdleOrbitEligible();
     this.kickUpdateOnce();
@@ -683,7 +682,6 @@ function disposeMaterial(mat: THREE.Material): void {
 }
 
 export type { SceneMetadata, GridState, HostFlags };
-export { DEFAULT_GRID, DEFAULT_HOST_FLAGS };
 
 function asObject3D(value: unknown): THREE.Object3D | null {
   if (value instanceof THREE.Object3D) return value;

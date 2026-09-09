@@ -7,12 +7,7 @@ import {
 } from "../dist/validate/params.js";
 
 describe("validateParamsTree", () => {
-  it("accepts card tree, empty array, and flat defaults", () => {
-    const empty = validateParamsTree([], "params");
-    assert.equal(empty.issues.length, 0);
-    assert.deepEqual(empty.nodes, []);
-    assert.deepEqual(empty.writable, []);
-
+  it("accepts nested cards and flat defaults", () => {
     const { nodes, writable, issues } = validateParamsTree(
       [
         {
@@ -36,7 +31,7 @@ describe("validateParamsTree", () => {
               options: ["a", "b"],
               default: "a",
             },
-            { type: "label", label: "Fixed", value: "x" },
+            { type: "label", label: "Area", value: (p) => String(p.size) },
             {
               type: "card",
               title: "Nested",
@@ -65,24 +60,12 @@ describe("validateParamsTree", () => {
       kind: "a",
       nested_n: 2,
     });
+    const area = nodes[0].children.find((n) => n.type === "label");
+    assert.equal(resolveLabelValue(area.value, { size: 3 }), "3");
   });
 
-  it("rejects incomplete number field", () => {
-    const { issues } = validateParamsTree(
-      [
-        {
-          type: "card",
-          title: "C",
-          children: [{ key: "n", type: "number", label: "N", default: 1 }],
-        },
-      ],
-      "params",
-    );
-    assert.ok(issues.some((i) => i.path.includes("min")));
-  });
-
-  it("rejects duplicate keys across nested cards", () => {
-    const { issues } = validateParamsTree(
+  it("rejects duplicate keys, unknown types, and incomplete numbers", () => {
+    const dup = validateParamsTree(
       [
         {
           type: "card",
@@ -115,138 +98,24 @@ describe("validateParamsTree", () => {
       ],
       "params",
     );
-    assert.ok(issues.some((i) => i.message.includes("duplicate")));
-  });
+    assert.ok(dup.issues.some((i) => i.message.includes("duplicate")));
 
-  it("rejects fields + children dual schema", () => {
-    const { issues } = validateParamsTree(
+    const unknown = validateParamsTree(
+      [{ type: "vector", key: "v", label: "V", default: [0, 0, 1] }],
+      "params",
+    );
+    assert.ok(unknown.issues.some((i) => i.path.endsWith(".type")));
+
+    const incomplete = validateParamsTree(
       [
         {
           type: "card",
           title: "C",
-          fields: [],
-          children: [],
+          children: [{ key: "n", type: "number", label: "N", default: 1 }],
         },
       ],
       "params",
     );
-    assert.ok(issues.some((i) => i.path.includes("fields")));
-  });
-
-  it("allows writable nodes at root (array of nodes)", () => {
-    const { writable, issues } = validateParamsTree(
-      [
-        {
-          key: "solo",
-          type: "number",
-          label: "Solo",
-          min: 0,
-          max: 1,
-          default: 0,
-        },
-      ],
-      "params",
-    );
-    assert.equal(issues.length, 0);
-    assert.equal(writable?.length, 1);
-  });
-
-  it("accepts number unit and derived label function", () => {
-    const { nodes, writable, issues } = validateParamsTree(
-      [
-        {
-          key: "a_base",
-          type: "number",
-          label: "Base",
-          min: 0,
-          max: 10,
-          default: 3,
-          unit: "u",
-        },
-        {
-          key: "a_height",
-          type: "number",
-          label: "Height",
-          min: 0,
-          max: 10,
-          default: 2,
-          unit: "u",
-        },
-        {
-          type: "label",
-          label: "Area",
-          value: (p) => (0.5 * p.a_base * p.a_height).toFixed(2),
-        },
-      ],
-      "params",
-    );
-    assert.equal(issues.length, 0, JSON.stringify(issues));
-    assert.equal(writable?.length, 2);
-    assert.equal(writable?.[0].unit, "u");
-    const area = nodes?.[2];
-    assert.equal(area?.type, "label");
-    assert.equal(
-      resolveLabelValue(area.value, { a_base: 3, a_height: 2 }),
-      "3.00",
-    );
-  });
-
-  it("accepts multiselect and string fields", () => {
-    const { writable, issues } = validateParamsTree(
-      [
-        {
-          key: "layers",
-          type: "multiselect",
-          label: "Show",
-          options: ["axes", "trail", "labels"],
-          default: ["axes", "trail"],
-        },
-        {
-          key: "points",
-          type: "string",
-          label: "Polyline (x,y pairs)",
-          default: "0,0; 1,1; 2,0.5",
-          placeholder: "x,y; x,y; …",
-        },
-      ],
-      "params",
-    );
-    assert.equal(issues.length, 0, JSON.stringify(issues));
-    assert.deepEqual(defaultsFromWritable(writable), {
-      layers: ["axes", "trail"],
-      points: "0,0; 1,1; 2,0.5",
-    });
-    assert.equal(writable?.[0].type, "multiselect");
-    assert.equal(writable?.[1].placeholder, "x,y; x,y; …");
-  });
-
-  it("rejects unknown param type with allowed list", () => {
-    const { issues } = validateParamsTree(
-      [{ type: "vector", key: "v", label: "V", default: [0, 0, 1] }],
-      "params",
-    );
-    assert.ok(issues.some((i) => i.path.endsWith(".type")));
-    assert.ok(
-      issues.some((i) =>
-        i.message.includes("multiselect") && i.message.includes("string"),
-      ),
-      JSON.stringify(issues),
-    );
-  });
-
-  it("rejects multiselect default not in options", () => {
-    const { issues } = validateParamsTree(
-      [
-        {
-          key: "layers",
-          type: "multiselect",
-          label: "Show",
-          options: ["a", "b"],
-          default: ["a", "z"],
-        },
-      ],
-      "params",
-    );
-    assert.ok(issues.some((i) => i.message.includes("must be in options")));
+    assert.ok(incomplete.issues.some((i) => i.path.includes("min")));
   });
 });

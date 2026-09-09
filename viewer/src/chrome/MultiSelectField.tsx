@@ -1,8 +1,3 @@
-/**
- * Multi-select dropdown (Grid planes + params multiselect).
- * One shared control — do not fork another checkbox dropdown.
- * Live-flush each toggle; draft while open so the menu is not re-rendered.
- */
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";

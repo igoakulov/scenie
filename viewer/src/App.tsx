@@ -7,12 +7,8 @@ import { ParamsPanel } from "./chrome/params";
 import { Button } from "@/components/ui/button";
 import { loadScene, viewToDimensions, type LoadedScene } from "./host/loadScene";
 import type { ParamValue } from "./host/defaults";
-import {
-  DEFAULT_GRID,
-  SceneHost,
-  type GridState,
-} from "./host/SceneHost";
-import { gridForDimensions } from "./host/grid";
+import { SceneHost, type GridState } from "./host/SceneHost";
+import { DEFAULT_GRID, gridForDimensions } from "./host/grid";
 import { userFacingError } from "./host/viewerError";
 import { isTypingTarget } from "./host/typingFocus";
 import { CopyIconButton } from "./chrome/CopyHitbox";
@@ -26,7 +22,6 @@ function readSceneFromUrl(): string | null {
   return scene.trim();
 }
 
-/** Session-only Grid prefs keyed by scene id (and no-selection shell). */
 const gridByKey = new Map<string, GridState>();
 const NO_SCENE_KEY = "__none__";
 
@@ -77,6 +72,8 @@ export function App() {
   sceneIdRef.current = sceneId;
   const summaryPresentRef = useRef(summaryPresent);
   summaryPresentRef.current = summaryPresent;
+  const liveParamsRef = useRef(liveParams);
+  liveParamsRef.current = liveParams;
 
   useEffect(() => {
     const host = canvasHostRef.current;
@@ -122,7 +119,6 @@ export function App() {
         e.preventDefault();
         hostRef.current?.resetView();
       } else if (e.key === " " || e.code === "Space") {
-        // When camera: false, Space is free for the scene (jump/fly); use Explore Play/Pause.
         const flags = hostRef.current?.getHostFlags();
         if (flags && !flags.camera) return;
         const ui = hostRef.current?.getPlaybackUi();
@@ -135,7 +131,6 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Load / unload canvas from selection only — sheet tab does not clear selection.
   useEffect(() => {
     const rt = hostRef.current;
     if (!rt) return;
@@ -154,7 +149,6 @@ export function App() {
     }
 
     let cancelled = false;
-    // Drop previous scene UI immediately so Summary/Explore never flash old content.
     setLoading(true);
     setError(null);
     setLoaded(null);
@@ -191,7 +185,6 @@ export function App() {
     };
   }, [sceneId]);
 
-  // If selection is cleared while on a scene tab, land on Library.
   useEffect(() => {
     if (!hasScene && sheetTab !== "library") {
       setSheetTab("library");
@@ -239,51 +232,46 @@ export function App() {
       const rt = hostRef.current;
       if (!loaded || !rt) return;
 
-      setLiveParams((prev) => {
-        let next: Record<string, ParamValue> = {
-          ...prev,
-          [key]: Array.isArray(value) ? [...value] : value,
-        };
-        if (typeof loaded.module.onParamsChange === "function") {
-          try {
-            next = loaded.module.onParamsChange(next, { key, value });
-          } catch (err) {
-            setError(
-              userFacingError(
-                new Error(
-                  `onParamsChange threw: ${err instanceof Error ? err.message : String(err)}`,
-                ),
-                loaded.id,
+      const prev = liveParamsRef.current;
+      let next: Record<string, ParamValue> = {
+        ...prev,
+        [key]: Array.isArray(value) ? [...value] : value,
+      };
+      if (typeof loaded.module.onParamsChange === "function") {
+        try {
+          next = loaded.module.onParamsChange(next, { key, value });
+        } catch (err) {
+          setError(
+            userFacingError(
+              new Error(
+                `onParamsChange threw: ${err instanceof Error ? err.message : String(err)}`,
               ),
-            );
-            return prev;
-          }
+              loaded.id,
+            ),
+          );
+          return;
         }
+      }
+      if (paramBagsEqual(prev, next)) return;
 
-        // Blur after a live parse re-commits the same value — skip the graph.
-        if (paramBagsEqual(prev, next)) return prev;
-
-        if (typeof loaded.module.applyParams === "function") {
-          try {
-            rt.applyParams(next, { key, value });
-            setError(null);
-          } catch (err) {
-            setError(userFacingError(err, loaded.id));
-          }
-          return next;
+      setLiveParams(next);
+      if (typeof loaded.module.applyParams === "function") {
+        try {
+          rt.applyParams(next, { key, value });
+          setError(null);
+        } catch (err) {
+          setError(userFacingError(err, loaded.id));
         }
-
-        void (async () => {
-          try {
-            await rt.remountWithParams(next);
-            setError(null);
-          } catch (err) {
-            setError(userFacingError(err, loaded.id));
-          }
-        })();
-
-        return next;
-      });
+        return;
+      }
+      void (async () => {
+        try {
+          await rt.remountWithParams(next);
+          setError(null);
+        } catch (err) {
+          setError(userFacingError(err, loaded.id));
+        }
+      })();
     },
     [loaded],
   );
@@ -326,7 +314,6 @@ export function App() {
 
   return (
     <div className="app-shell">
-      {/* Single stable control — never remounts between open/closed (avoids flash). */}
       <div className="panel-toggle-float">{panelBtn}</div>
 
       {summaryPresent && loaded && loaded.id === sceneId && (
@@ -355,7 +342,7 @@ export function App() {
         )}
         {error && (
           <div className="group viewport-error" role="alert">
-            <p className="m-0 min-w-0 flex-1">{error}</p>
+            <p className="m-0 min-w-0 flex-1 whitespace-pre-line">{error}</p>
             <CopyIconButton
               text={error}
               className="text-destructive hover:text-destructive"
@@ -418,7 +405,10 @@ export function App() {
             <div className="sheet-scroll">
               <div className="min-w-0 px-3 py-3">
                 <div className={sheetTab === "library" ? undefined : "hidden"}>
-                  <LibraryPanel onOpen={openScene} />
+                  <LibraryPanel
+                    onOpen={openScene}
+                    active={sheetTab === "library"}
+                  />
                 </div>
                 {sheetTab === "summary" &&
                   hasScene &&

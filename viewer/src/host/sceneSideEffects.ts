@@ -42,10 +42,6 @@ export class SceneSideEffects {
   private active = false;
   private bucket: Bucket = "scene";
 
-  get isActive(): boolean {
-    return this.active;
-  }
-
   setBucket(bucket: Bucket): void {
     this.bucket = bucket;
   }
@@ -68,11 +64,6 @@ export class SceneSideEffects {
     this.tracked = this.tracked.filter((t) => t.bucket !== bucket);
     this.removeAll(drop);
     if (this.tracked.length === 0) this.unpatch();
-  }
-
-  stop(): void {
-    this.stopBucket("scene");
-    this.stopBucket("input");
   }
 
   private unpatch(): void {

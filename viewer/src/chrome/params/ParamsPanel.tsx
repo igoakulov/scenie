@@ -1,6 +1,3 @@
-/**
- * Explore params: accordion sections for `type: "card"` (multiple open).
- */
 import type { ReactNode } from "react";
 import type { ParamsNode } from "../../host/paramsTree";
 import { MathText } from "../../math/renderMath";
@@ -27,10 +24,6 @@ export function ParamsPanel({ tree, params, onChange }: ParamsPanelProps) {
   );
 }
 
-/**
- * Non-cards render inline; consecutive cards share one Accordion (peer dividers).
- * Nested cards recurse inside panel content as nested Roots.
- */
 function NodeList({
   nodes,
   params,
@@ -60,7 +53,6 @@ function NodeList({
       i += 1;
     }
     const values = batch.map((c, j) => cardValue(c, start + j));
-    // Extra air before a nested card block when it follows fields/notes (not indent).
     const afterLeaves = start > 0;
     out.push(
       <Accordion

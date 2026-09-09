@@ -1,12 +1,9 @@
 import * as THREE from "three";
 import { defaultsFromParamsTree, type ParamValue } from "./defaults";
 import { readParamsTree, type ParamsNode } from "./paramsTree";
-import {
-  DEFAULT_HOST_FLAGS,
-  resolveHostFlags,
-  type HostFlags,
-} from "./hostFlags";
+import { resolveHostFlags, type HostFlags } from "./hostFlags";
 import { installSceneCapture } from "../../../src/scene-capture";
+import { parseMetadata } from "../../../src/validate/metadata";
 
 export interface SceneMetadata {
   title: string;
@@ -63,26 +60,24 @@ export async function loadMetadata(id: string): Promise<SceneMetadata> {
   if (!res.ok) {
     throw new Error(`metadata.json: HTTP ${res.status}`);
   }
-  let raw: Record<string, unknown>;
+  let json: unknown;
   try {
-    raw = (await res.json()) as Record<string, unknown>;
+    json = await res.json();
   } catch {
     throw new Error("metadata.json: invalid JSON");
   }
-  if (typeof raw.title !== "string" || typeof raw.description !== "string") {
-    throw new Error("metadata.json: missing title/description");
-  }
-  if (!Array.isArray(raw.tags)) {
-    throw new Error("metadata.json: tags want string[]");
+  const { metadata, issues } = parseMetadata(json);
+  if (!metadata || issues.length > 0) {
+    throw new Error(
+      issues.map((i) => `${i.path}: ${i.message}`).join("; ") ||
+        "metadata.json: invalid",
+    );
   }
   return {
-    title: raw.title,
-    description: raw.description,
-    tags: raw.tags as string[],
-    attribution:
-      raw.attribution && typeof raw.attribution === "object"
-        ? (raw.attribution as Record<string, unknown>)
-        : undefined,
+    title: metadata.title,
+    description: metadata.description,
+    tags: metadata.tags,
+    attribution: metadata.attribution,
   };
 }
 
@@ -90,7 +85,8 @@ async function importFile(
   id: string,
   file: string,
   extraQuery = "",
-): Promise<Record<string, unknown>> {
+  optional = false,
+): Promise<Record<string, unknown> | undefined> {
   const url = `${sceneBaseUrl(id)}/${file}?t=${Date.now()}-${Math.random()}${extraQuery}`;
   let res: Response;
   try {
@@ -99,6 +95,7 @@ async function importFile(
     throw new Error(`${file}: unreachable`);
   }
   if (res.status === 404) {
+    if (optional) return undefined;
     throw new Error(`${file}: missing`);
   }
   if (!res.ok) {
@@ -107,30 +104,9 @@ async function importFile(
   try {
     return (await import(/* @vite-ignore */ url)) as Record<string, unknown>;
   } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
     console.error(`${file} import failed:`, err);
-    throw new Error(`${file}: import failed`);
-  }
-}
-
-async function importHostFile(
-  id: string,
-): Promise<Record<string, unknown> | undefined> {
-  const url = `${sceneBaseUrl(id)}/host.js?t=${Date.now()}-${Math.random()}`;
-  let res: Response;
-  try {
-    res = await fetch(url, { cache: "no-store" });
-  } catch {
-    throw new Error("host.js: unreachable");
-  }
-  if (res.status === 404) return undefined;
-  if (!res.ok) {
-    throw new Error(`host.js: HTTP ${res.status}`);
-  }
-  try {
-    return (await import(/* @vite-ignore */ url)) as Record<string, unknown>;
-  } catch (err) {
-    console.error("host.js import failed:", err);
-    throw new Error("host.js: import failed");
+    throw new Error(`${file}: import failed: ${detail}`);
   }
 }
 
@@ -155,7 +131,7 @@ export async function importSceneGraph(
   globalThis.requestAnimationFrame = (() => 0) as typeof requestAnimationFrame;
   const cap = installSceneCapture(THREE.Scene);
   try {
-    const mod = await importFile(id, "scene.js", extra);
+    const mod = (await importFile(id, "scene.js", extra))!;
     return {
       scene: mod.scene,
       camera: mod.camera,
@@ -182,10 +158,10 @@ export async function importSceneGraph(
 export async function loadScene(id: string): Promise<LoadedScene> {
   const [metadata, hostMod] = await Promise.all([
     loadMetadata(id),
-    importHostFile(id),
+    importFile(id, "host.js", "", true),
   ]);
 
-  let hostFlags = { ...DEFAULT_HOST_FLAGS };
+  let hostFlags: HostFlags;
   try {
     hostFlags = resolveHostFlags(hostMod?.host);
   } catch (err) {
@@ -241,4 +217,4 @@ export async function loadScene(id: string): Promise<LoadedScene> {
 }
 
 export type { HostFlags };
-export { DEFAULT_HOST_FLAGS, resolveHostFlags, viewToDimensions } from "./hostFlags";
+export { viewToDimensions } from "./hostFlags";

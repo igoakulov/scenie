@@ -49,15 +49,11 @@ function extractMath(src: string): { text: string; parts: MathPart[] } {
 }
 
 function renderTex(tex: string, displayMode: boolean): string {
-  try {
-    return katex.renderToString(tex, {
-      displayMode,
-      throwOnError: false,
-      strict: "ignore",
-    });
-  } catch {
-    return escapeHtml(displayMode ? `$$${tex}$$` : `$${tex}$`);
-  }
+  return katex.renderToString(tex, {
+    displayMode,
+    throwOnError: false,
+    strict: "ignore",
+  });
 }
 
 function restoreMath(html: string, parts: MathPart[]): string {

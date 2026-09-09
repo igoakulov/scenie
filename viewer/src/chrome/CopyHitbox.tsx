@@ -16,7 +16,6 @@ function useCopy(text: string) {
   return { ok, copy, label: ok ? "Copied" : ("Copy" as const) };
 }
 
-/** Icon-only (Summary title / description / accordion bodies). */
 export function CopyIconButton({
   text,
   className,
@@ -36,7 +35,7 @@ export function CopyIconButton({
         void copy();
       }}
       className={cn(
-        "inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-2.5",
+        "inline-flex size-5 shrink-0 items-center justify-center rounded-sm bg-card text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-2.5",
         ok
           ? "opacity-100"
           : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
@@ -48,7 +47,6 @@ export function CopyIconButton({
   );
 }
 
-/** Full-row framed copy (Library zero-state commands / prompts). */
 export function CopyHitbox({
   text,
   children,

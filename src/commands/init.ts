@@ -24,7 +24,6 @@ export async function cmdInit(
   }
 
   const pathGiven = pathArg !== undefined && pathArg !== "";
-  // Bare init + config: heal configured workspace (not cwd). --force uses path/cwd.
   let fromConfig = false;
   let workspace: string;
   if (!pathGiven && !force && current) {

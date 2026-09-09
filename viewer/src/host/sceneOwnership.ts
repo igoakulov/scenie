@@ -45,13 +45,6 @@ export function firstCameraInGraph(root: THREE.Object3D): THREE.Camera | null {
   return cameras[0] ?? null;
 }
 
-export function startViewFromGraph(root: THREE.Object3D): StartView | null {
-  const agent = firstCameraInGraph(root);
-  if (!agent) return null;
-  root.updateWorldMatrix(true, true);
-  return poseFromCamera(agent);
-}
-
 export function asCamera(value: unknown): THREE.Camera | null {
   if (value instanceof THREE.Camera) return value;
   const obj = value as { isCamera?: boolean } | null;

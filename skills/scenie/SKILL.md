@@ -189,7 +189,7 @@ scenie validate scenes/my-scene
 scenie show scenes/my-scene    # keep running; or scenie show for library
 ```
 
-Edits → refresh browser. Port busy on show → refresh viewer or free port + re-show; do not probe HTTP routes. Restart show only: switch scene or dead server.
+Edits → refresh browser. Port busy → existing show already serving, open that listen URL (?scene=). Restart show only if server dead.
 
 ## Versioning and backup
 

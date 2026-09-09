@@ -1,16 +1,14 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
-import { access, readFile, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import http from "node:http";
 import { createRequire } from "node:module";
-import { basename, dirname, extname, join, normalize, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, normalize, relative, resolve } from "node:path";
 import { withParamsPreamble } from "../params-preamble.js";
 import { pipeline } from "node:stream/promises";
 import { listSceneEntries } from "../catalog.js";
 import { packageRoot } from "../examples.js";
 
 const require = createRequire(import.meta.url);
-
-export { packageRoot };
 
 export function viewerDistDir(root = packageRoot()): string {
   return join(root, "viewer", "dist");
@@ -83,7 +81,7 @@ function isInside(root: string, candidate: string): boolean {
   const rootAbs = resolve(root);
   const candAbs = resolve(candidate);
   const rel = relative(rootAbs, candAbs);
-  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !rel.startsWith(".."));
+  return rel === "" || !rel.startsWith("..");
 }
 
 /**
@@ -211,7 +209,6 @@ async function handleRequest(
       pathname = pathname.slice(0, -1);
     }
 
-    // Library catalog for the viewer (metadata titles only; no scene.js).
     if (pathname === "/api/scenes") {
       const entries = await listSceneEntries(roots.workspace);
       const body = JSON.stringify(entries);
@@ -238,7 +235,6 @@ async function handleRequest(
         sendText(res, 403, "forbidden");
         return;
       }
-      // Only serve under scenes/
       const scenesRoot = join(roots.workspace, "scenes");
       if (!isInside(scenesRoot, filePath) && filePath !== scenesRoot) {
         sendText(res, 403, "forbidden");
@@ -319,7 +315,6 @@ async function handleRequest(
       return;
     }
 
-    // SPA fallback for client routes
     if (!extname(pathname)) {
       const indexPath = join(roots.viewerRoot, "index.html");
       const html = injectImportMap(await readFile(indexPath, "utf8"));
@@ -345,14 +340,3 @@ async function handleRequest(
 }
 
 export const DEFAULT_SHOW_PORT = 3471;
-
-export async function assertViewerBuilt(): Promise<void> {
-  const indexPath = join(viewerDistDir(), "index.html");
-  try {
-    await access(indexPath);
-  } catch {
-    throw new Error(
-      `viewer assets missing: ${indexPath}\nrun: npm run build:viewer`,
-    );
-  }
-}
