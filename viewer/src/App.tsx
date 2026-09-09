@@ -354,7 +354,7 @@ export function App() {
           </div>
         )}
         {error && (
-          <div className="viewport-error" role="alert">
+          <div className="group viewport-error" role="alert">
             <p className="m-0 min-w-0 flex-1">{error}</p>
             <CopyIconButton
               text={error}
@@ -417,9 +417,9 @@ export function App() {
           <div className="sheet-body">
             <div className="sheet-scroll">
               <div className="min-w-0 px-3 py-3">
-                {sheetTab === "library" && (
+                <div className={sheetTab === "library" ? undefined : "hidden"}>
                   <LibraryPanel onOpen={openScene} />
-                )}
+                </div>
                 {sheetTab === "summary" &&
                   hasScene &&
                   loaded &&

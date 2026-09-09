@@ -90,7 +90,7 @@ body,
 /* Always top-right of the window (over sheet header when open). One node, no flash. */
 .panel-toggle-float {
   position: absolute;
-  top: 6px;
+  top: 8px;
   right: 8px;
   z-index: 40;
 }
@@ -132,7 +132,7 @@ body,
   align-items: center;
   gap: 2px;
   height: 40px;
-  /* Left: same as sheet body content (px-3); right: room for panel toggle */
+  /* Left: body px-3. Right: 8px toggle offset + 28px button + 4px gap. */
   padding: 0 40px 0 12px;
   background: var(--card);
 }

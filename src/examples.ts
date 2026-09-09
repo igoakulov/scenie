@@ -1,4 +1,4 @@
-import { access, cp, readdir, stat } from "node:fs/promises";
+import { access, cp, mkdir, readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
@@ -59,9 +59,9 @@ export async function listExampleSceneIds(
 }
 
 /**
- * Copy missing example scenes into workspace/scenes/<id>/.
+ * Copy missing example scenes into workspace/scenes/examples/<id>/.
  * Never overwrites an existing scene folder.
- * @returns ids that were newly created
+ * @returns workspace ids that were newly created (`examples/<id>`)
  */
 export async function seedExampleScenes(
   workspace: string,
@@ -71,16 +71,18 @@ export async function seedExampleScenes(
   const created: string[] = [];
   if (ids.length === 0) return created;
   for (const id of ids) {
-    const dest = sceneDir(workspace, id);
+    const destId = `examples/${id}`;
+    const dest = sceneDir(workspace, destId);
     try {
       const st = await stat(dest);
       if (st.isDirectory()) continue;
     } catch {
       // missing → copy
     }
+    await mkdir(dirname(dest), { recursive: true });
     const src = join(examplesDir(root), id);
     await cp(src, dest, { recursive: true, force: false, errorOnExist: true });
-    created.push(id);
+    created.push(destId);
   }
   return created;
 }

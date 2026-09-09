@@ -86,7 +86,7 @@ scenie init          # or without link: node bin/scenie.js init
 
 ## Under the hood
 
-Agent skill (**<200 lines**) + lightweight npm package (CLI + prebuilt viewer, **<0.5 MB**, **~6k LOC**). Requires Node ≥ 20.
+Agent skill (**200 lines**) + lightweight npm package (CLI + prebuilt viewer, **0.5 MB**, **6k LOC**). Requires Node ≥ 20.
 
 - Portable scene folders: `metadata.json` + `scene.js` + optional `host.js` (+ optional assets); no proprietary geometry DSL
 - Local viewer: library, summary (markdown + KaTeX), Explore cards, orbit (3D) / pan-zoom (2D), grid, play/pause, in-scene annotations

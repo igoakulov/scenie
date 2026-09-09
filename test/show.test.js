@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   cp,
+  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -65,7 +66,7 @@ describe("show", () => {
     const configDir = await mkdtemp(join(tmpdir(), "scenie-cfg-"));
     const env = { SCENIE_CONFIG_DIR: configDir };
     await runScenie(["init", workspace], env);
-    const r = await runScenie(["show", "missing-scene", "--no-open"], env);
+    const r = await runScenie(["show", "scenes/missing-scene", "--no-open"], env);
     assert.equal(r.code, 1);
     await rm(workspace, { recursive: true, force: true });
     await rm(configDir, { recursive: true, force: true });
@@ -81,7 +82,7 @@ describe("show", () => {
       join(workspace, "scenes", "bad"),
       { recursive: true },
     );
-    const r = await runScenie(["show", "bad", "--no-open"], env);
+    const r = await runScenie(["show", "scenes/bad", "--no-open"], env);
     assert.equal(r.code, 1);
     await rm(workspace, { recursive: true, force: true });
     await rm(configDir, { recursive: true, force: true });
@@ -111,9 +112,15 @@ describe("show", () => {
       join(workspace, "scenes", "bad-meta"),
       { recursive: true },
     );
+    await mkdir(join(workspace, "scenes", "physics"), { recursive: true });
+    await cp(
+      join(fixtures, "valid-basic"),
+      join(workspace, "scenes", "physics", "gravity"),
+      { recursive: true },
+    );
 
     let listenUrl = "";
-    const rPromise = runScenie(["show", "demo", "--no-open"], env, {
+    const rPromise = runScenie(["show", "scenes/demo", "--no-open"], env, {
       timeoutMs: 15000,
       onStdout(stdout, _stderr, child) {
         const m = stdout.match(/^listen (\S+)/m);
@@ -132,6 +139,12 @@ describe("show", () => {
               assert.equal(sceneJs.status, 200);
               assert.match(sceneJs.body, /export \{ scene \}/);
 
+              const nestedJs = await httpGet(
+                `http://127.0.0.1:${port}/ws/scenes/physics/gravity/scene.js`,
+              );
+              assert.equal(nestedJs.status, 200);
+              assert.match(nestedJs.body, /export \{ scene \}/);
+
               const catalog = await httpGet(
                 `http://127.0.0.1:${port}/api/scenes`,
               );
@@ -142,6 +155,7 @@ describe("show", () => {
                 entries.map((e) => [e.id, e]),
               );
               assert.equal(byId.demo?.title, "Valid basic");
+              assert.equal(byId["physics/gravity"]?.title, "Valid basic");
               assert.equal(byId["bad-meta"]?.id, "bad-meta");
               assert.equal(byId["bad-meta"]?.title, undefined);
               assert.equal(byId[".hidden-bak"], undefined);

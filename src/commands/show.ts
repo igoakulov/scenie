@@ -3,6 +3,7 @@ import {
   formatIssueLines,
   printFail,
   printListen,
+  printNotFound,
   printSceneBlock,
   printWorkspace,
 } from "../print.js";
@@ -12,10 +13,10 @@ import {
 } from "../server/http.js";
 import { openBrowser } from "../server/open-browser.js";
 import { validateScene } from "../validate/scene.js";
-import { sceneExists } from "../workspace.js";
+import { parseSceneArg, sceneExists } from "../workspace.js";
 
 export async function cmdShow(
-  id: string | undefined,
+  arg: string | undefined,
   opts: { noOpen?: boolean } = {},
 ): Promise<number> {
   const config = await readConfig();
@@ -25,9 +26,11 @@ export async function cmdShow(
   const workspace = await requireWorkspace();
   printWorkspace(workspace);
 
-  if (id) {
-    if (!(await sceneExists(workspace, id))) {
-      printSceneBlock(workspace, id, ["ERR not found"]);
+  let id: string | undefined;
+  if (arg) {
+    id = parseSceneArg(arg);
+    if (!id || !(await sceneExists(workspace, id))) {
+      printNotFound(workspace, arg, id);
       return 1;
     }
     const result = await validateScene(workspace, id);

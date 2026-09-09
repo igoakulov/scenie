@@ -24,7 +24,7 @@ export async function validateScene(
   if (!isSceneId(id)) {
     issues.push({
       path: "id",
-      message: "want kebab-case (e.g. my-scene) or hidden .my-scene",
+      message: "want kebab-case path (e.g. my-scene or physics/gravity)",
     });
   }
 

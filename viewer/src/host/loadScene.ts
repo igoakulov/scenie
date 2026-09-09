@@ -45,7 +45,7 @@ export interface SceneModule {
 }
 
 export function sceneBaseUrl(id: string): string {
-  return `/ws/scenes/${encodeURIComponent(id)}`;
+  return `/ws/scenes/${id.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 export async function loadMetadata(id: string): Promise<SceneMetadata> {

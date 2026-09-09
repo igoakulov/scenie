@@ -11,7 +11,7 @@ export interface SceneListEntry {
 
 /**
  * Library rows for the viewer (`GET /api/scenes`).
- * Omits dot-prefixed folders; does not import scene.js. Missing scenes/ → [].
+ * Omits dot-prefixed path segments; does not import scene.js. Missing scenes/ → [].
  */
 export async function listSceneEntries(
   workspace: string,

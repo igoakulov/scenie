@@ -13,7 +13,7 @@ You are Three.js expert that teaches STEM subjects / concepts with interactive s
 
 ```bash
 npm install -g scenie          # Node ≥ 20; or npm link from checkout
-scenie init [path]             # omit path → cwd; creates config
+scenie init [path]             # omit path → cwd; config; seeds scenes/examples/
 # Native-like launcher: ASK user + create (see below)
 ```
 
@@ -24,7 +24,7 @@ Launcher (`.app`/`.lnk`): macOS `/Applications`, Windows Desktop/taskbar; icons 
 ## Workspace
 
 ```text
-<ws>/scenes/<id>/          # kebab-case folder; optional leading . (see Versioning)
+<ws>/scenes/<id>/          # kebab-case path (nested dirs ok); optional leading . (see Versioning)
   metadata.json
   scene.js
   host.js
@@ -185,8 +185,8 @@ scenie list                    # workspace /abs/path
 cd /abs/path
 mkdir -p scenes/my-scene
 # write metadata.json + scene.js + host.js
-scenie validate my-scene
-scenie show my-scene           # keep running; or scenie show for library
+scenie validate scenes/my-scene
+scenie show scenes/my-scene    # keep running; or scenie show for library
 ```
 
 Edits → refresh browser. Port busy on show → refresh viewer or free port + re-show; do not probe HTTP routes. Restart show only: switch scene or dead server.
@@ -195,6 +195,6 @@ Edits → refresh browser. Port busy on show → refresh viewer or free port + r
 
 ```bash
 cp -R scenes/my-scene scenes/my-scene-backup   # or host file tools
-cp -R scenes/my-scene scenes/.my-scene         # leading . hides from list UI; CLI still targets
+cp -R scenes/my-scene scenes/.my-scene         # leading . hides from Library; CLI: scenes/.my-scene
 # optional: git for anything more advanced
 ```

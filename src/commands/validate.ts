@@ -3,20 +3,27 @@ import {
   formatIssueLines,
   printFail,
   printHint,
+  printNotFound,
   printSceneBlock,
   printWorkspace,
 } from "../print.js";
 import { validateScene } from "../validate/scene.js";
-import { hasScenesDir, listSceneIds, sceneExists } from "../workspace.js";
+import {
+  hasScenesDir,
+  listSceneIds,
+  parseSceneArg,
+  sceneExists,
+} from "../workspace.js";
 
-export async function cmdValidate(id: string | undefined): Promise<number> {
+export async function cmdValidate(arg: string | undefined): Promise<number> {
   const workspace = await requireWorkspace();
   printWorkspace(workspace);
 
   let ids: string[];
-  if (id) {
-    if (!(await sceneExists(workspace, id))) {
-      printSceneBlock(workspace, id, ["ERR not found"]);
+  if (arg) {
+    const id = parseSceneArg(arg);
+    if (!id || !(await sceneExists(workspace, id))) {
+      printNotFound(workspace, arg, id);
       return 1;
     }
     ids = [id];

@@ -37,6 +37,9 @@ export function CopyIconButton({
       }}
       className={cn(
         "inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-2.5",
+        ok
+          ? "opacity-100"
+          : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
         className,
       )}
     >
@@ -62,7 +65,7 @@ export function CopyHitbox({
       title={label}
       aria-label={label}
       onClick={() => void copy()}
-      className="flex w-full min-w-0 items-start gap-1 rounded-md border border-dashed border-muted-foreground/40 px-2 py-1.5 text-left text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group flex w-full min-w-0 items-start gap-1 rounded-md border border-dashed border-muted-foreground/40 px-2 py-1.5 text-left text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span
         className={cn(
@@ -73,7 +76,12 @@ export function CopyHitbox({
         {children}
       </span>
       <span
-        className="inline-flex size-5 shrink-0 items-center justify-center text-muted-foreground [&_svg]:size-2.5"
+        className={cn(
+          "inline-flex size-5 shrink-0 items-center justify-center text-muted-foreground [&_svg]:size-2.5",
+          ok
+            ? "opacity-100"
+            : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+        )}
         aria-hidden
       >
         {ok ? <CheckIcon /> : <CopyIcon />}

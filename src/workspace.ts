@@ -1,9 +1,7 @@
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-/** Library-visible id: kebab-case only (no leading dot). */
-const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-/** Scene folder id: optional leading `.` then kebab-case (hidden from Library). */
+/** Path segment: optional leading `.` then kebab-case (hidden from Library). */
 const SCENE_ID = /^\.?[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
@@ -33,19 +31,13 @@ const IGNORED_SCENE_ENTRIES = new Set(
   ].map((s) => s.toLowerCase()),
 );
 
-export function isKebabCaseId(id: string): boolean {
-  return KEBAB_CASE.test(id);
-}
-
+/** Posix id relative to scenes/ — kebab-case segments, optional leading `.` per segment. */
 export function isSceneId(id: string): boolean {
-  return SCENE_ID.test(id);
+  if (!id || id.includes("\\")) return false;
+  return id.split("/").every((seg) => SCENE_ID.test(seg));
 }
 
-export function isHiddenSceneId(id: string): boolean {
-  return id.startsWith(".") && SCENE_ID.test(id);
-}
-
-export function isIgnoredSceneEntry(name: string): boolean {
+function isIgnoredSceneEntry(name: string): boolean {
   return IGNORED_SCENE_ENTRIES.has(name.toLowerCase());
 }
 
@@ -54,7 +46,22 @@ export function scenesDir(workspace: string): string {
 }
 
 export function sceneDir(workspace: string, id: string): string {
-  return join(scenesDir(workspace), id);
+  return join(scenesDir(workspace), ...id.split("/"));
+}
+
+/**
+ * CLI arg → id relative to scenes/.
+ * Workspace-relative `scenes/<id>` only (posix or `\\`); no `..` / absolute.
+ */
+export function parseSceneArg(arg: string): string | undefined {
+  const n = arg.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!n || n.includes("..") || n.startsWith("/") || /^[a-zA-Z]:/.test(n)) {
+    return undefined;
+  }
+  if (!n.startsWith("scenes/")) return undefined;
+  const id = n.slice("scenes/".length);
+  if (!isSceneId(id)) return undefined;
+  return id;
 }
 
 export async function ensureWorkspaceLayout(workspace: string): Promise<void> {
@@ -72,43 +79,67 @@ export async function hasScenesDir(workspace: string): Promise<boolean> {
 
 export type ListSceneIdsOptions = {
   /**
-   * Viewer Library only: omit every `.*` directory.
+   * Viewer Library only: omit every `.*` directory (any path segment).
    * CLI list / validate-all leave this unset so agents discover hidden backups.
    */
   library?: boolean;
 };
 
+async function isSceneLeaf(dir: string): Promise<boolean> {
+  for (const name of ["metadata.json", "scene.js"] as const) {
+    try {
+      const s = await stat(join(dir, name));
+      if (s.isFile()) return true;
+    } catch {
+      /* missing */
+    }
+  }
+  return false;
+}
+
 /**
- * Immediate child directories of scenes/ (candidate scene ids).
+ * Scene folders under scenes/ (posix ids, nested ok).
  * Missing scenes/ → [] (callers that care about layout use hasScenesDir).
  *
- * Always skips known OS/VCS garbage. Dot-prefixed scene folders are included
- * unless `library: true` (viewer catalog).
+ * A scene is a kebab-case directory that contains metadata.json or scene.js;
+ * do not recurse into it. Other kebab-case dirs are organizers and are walked.
+ * Skips OS/VCS junk and directory symlinks. Dot-prefixed dirs are included
+ * unless `library: true`.
  */
 export async function listSceneIds(
   workspace: string,
   options?: ListSceneIdsOptions,
 ): Promise<string[]> {
-  const dir = scenesDir(workspace);
+  const root = scenesDir(workspace);
   const library = options?.library === true;
-  let entries;
-  try {
-    entries = await readdir(dir, { withFileTypes: true });
-  } catch (err) {
-    const e = err as NodeJS.ErrnoException;
-    if (e.code === "ENOENT") {
-      return [];
+  const ids: string[] = [];
+
+  async function walk(dir: string, prefix: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException;
+      if (e.code === "ENOENT" && prefix === "") return;
+      throw err;
     }
-    throw err;
+
+    for (const ent of entries) {
+      if (!ent.isDirectory() || ent.isSymbolicLink()) continue;
+      if (isIgnoredSceneEntry(ent.name)) continue;
+      if (library && ent.name.startsWith(".")) continue;
+      if (!SCENE_ID.test(ent.name)) continue;
+      const id = prefix ? `${prefix}/${ent.name}` : ent.name;
+      const full = join(dir, ent.name);
+      if (await isSceneLeaf(full)) {
+        ids.push(id);
+      } else {
+        await walk(full, id);
+      }
+    }
   }
 
-  const ids: string[] = [];
-  for (const ent of entries) {
-    if (!ent.isDirectory()) continue;
-    if (isIgnoredSceneEntry(ent.name)) continue;
-    if (library && ent.name.startsWith(".")) continue;
-    ids.push(ent.name);
-  }
+  await walk(root, "");
   ids.sort();
   return ids;
 }
@@ -117,6 +148,7 @@ export async function sceneExists(
   workspace: string,
   id: string,
 ): Promise<boolean> {
+  if (!isSceneId(id)) return false;
   try {
     const s = await stat(sceneDir(workspace, id));
     return s.isDirectory();

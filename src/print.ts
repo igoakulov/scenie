@@ -33,6 +33,15 @@ export function printSceneBlock(
   }
 }
 
+/** `parseSceneArg` failed or folder missing. */
+export function printNotFound(workspace: string, arg: string, id?: string): void {
+  if (id) printSceneBlock(workspace, id, ["ERR not found"]);
+  else {
+    console.log(`@ ${arg.replace(/\\/g, "/")}`);
+    console.log("- ERR not found");
+  }
+}
+
 export function formatIssueLines(
   issues: { path: string; message: string; level?: "error" | "warning" }[],
 ): string[] {

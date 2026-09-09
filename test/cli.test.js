@@ -87,16 +87,29 @@ describe("CLI", () => {
       `throw new Error("scene.js must not be imported by list");\nexport const scene = {};\n`,
     );
 
+    await mkdir(join(workspace, "scenes", "physics"), { recursive: true });
+    await cp(
+      join(fixtures, "valid-basic"),
+      join(workspace, "scenes", "physics", "gravity"),
+      { recursive: true },
+    );
+
     r = await runScenie(["list"], env);
     assert.equal(r.code, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /@ scenes\/demo\b/);
+    assert.match(r.stdout, /@ scenes\/physics\/gravity\b/);
+    assert.doesNotMatch(r.stdout, /@ scenes\/physics\n/);
 
-    r = await runScenie(["validate", "demo"], env);
+    r = await runScenie(["validate", "scenes/demo"], env);
     assert.equal(r.code, 0, r.stderr + r.stdout);
 
-    r = await runScenie(["validate", ".demo-bak"], env);
+    r = await runScenie(["validate", "scenes/.demo-bak"], env);
     assert.equal(r.code, 0, r.stderr + r.stdout);
 
-    r = await runScenie(["validate", "bomb"], env);
+    r = await runScenie(["validate", "scenes/physics/gravity"], env);
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+
+    r = await runScenie(["validate", "scenes/bomb"], env);
     assert.equal(r.code, 1);
 
     await rm(workspace, { recursive: true, force: true });
@@ -128,7 +141,7 @@ describe("CLI", () => {
     let r = await runScenie(["init", workspace], env);
     assert.equal(r.code, 0, r.stderr + r.stdout);
 
-    const exampleId = "example-theory";
+    const exampleId = "examples/example-theory";
     const metaPath = join(workspace, "scenes", exampleId, "metadata.json");
     const scenePath = join(workspace, "scenes", exampleId, "scene.js");
     await access(scenePath);
@@ -138,7 +151,7 @@ describe("CLI", () => {
     await assert.rejects(() => access(join(workspace, "scenes", "screenshots")));
     await assert.rejects(() => access(join(workspace, "scenes", "prompts")));
 
-    r = await runScenie(["validate", exampleId], env);
+    r = await runScenie(["validate", `scenes/${exampleId}`], env);
     assert.equal(r.code, 0, r.stderr + r.stdout);
 
     // mutate + re-init must not overwrite
@@ -161,7 +174,7 @@ describe("CLI", () => {
     let r = await runScenie(["init", workspace], env);
     assert.equal(r.code, 0, r.stderr + r.stdout);
 
-    await rm(join(workspace, "scenes", "example-theory"), {
+    await rm(join(workspace, "scenes", "examples", "example-theory"), {
       recursive: true,
       force: true,
     });
@@ -171,7 +184,9 @@ describe("CLI", () => {
       SCENIE_TEST_CWD: otherCwd,
     });
     assert.equal(r.code, 0, r.stderr + r.stdout);
-    await access(join(workspace, "scenes", "example-theory", "scene.js"));
+    await access(
+      join(workspace, "scenes", "examples", "example-theory", "scene.js"),
+    );
 
     await rm(workspace, { recursive: true, force: true });
     await rm(otherCwd, { recursive: true, force: true });

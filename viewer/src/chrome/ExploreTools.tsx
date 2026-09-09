@@ -55,7 +55,7 @@ export function ExploreTools({
   return (
     <div className="flex flex-col gap-3">
       {showHelpers && (
-        <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(0,0.55fr)_minmax(0,0.55fr)] items-end gap-2">
+        <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(0,0.55fr)_minmax(0,0.55fr)] items-start gap-2 **:data-[slot=field-label]:h-5 **:data-[slot=field-label]:leading-none">
           <MultiSelectField
             label="Grid"
             options={options.map((o) => ({ value: o.key, label: o.label }))}
@@ -91,11 +91,11 @@ export function ExploreTools({
       )}
 
       {(showPlayback || showCameraReset) && (
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+        <div className="flex h-5 flex-wrap items-center justify-center gap-x-4">
           {showPlayback && (
             <button
               type="button"
-              className="text-center text-xs text-muted-foreground hover:text-foreground"
+              className="h-5 text-center text-xs leading-none text-muted-foreground hover:text-foreground"
               onClick={onTogglePlay}
             >
               {playing
@@ -110,7 +110,7 @@ export function ExploreTools({
           {showCameraReset && (
             <button
               type="button"
-              className="text-center text-xs text-muted-foreground hover:text-foreground"
+              className="h-5 text-center text-xs leading-none text-muted-foreground hover:text-foreground"
               onClick={onResetView}
             >
               Reset camera [R]

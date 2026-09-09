@@ -15,7 +15,10 @@ export function userFacingError(
   const missingFile = msg.match(/\b(metadata\.json|scene\.js): missing\b/i)
     ?? msg.match(/\b(metadata\.json|scene\.js).*HTTP 404\b/i);
   if (missingFile) {
-    return `${who} has no ${missingFile[1]}.`;
+    const file = missingFile[1];
+    return id
+      ? `Cannot find scenes/${id}/${file}. Verify scene path and files.`
+      : `Cannot find ${file}. Verify scene path and files.`;
   }
   const badImport = msg.match(/\b(scene\.js|host\.js): import failed\b/i);
   if (badImport) {

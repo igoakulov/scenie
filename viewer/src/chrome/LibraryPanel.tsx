@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { ChevronRightIcon, FileIcon, FolderIcon } from "lucide-react";
 import { userFacingError } from "../host/viewerError";
 import { cn } from "@/lib/utils";
 import { CopyHitbox } from "./CopyHitbox";
@@ -18,6 +19,17 @@ const INIT_CMD = "scenie init";
 
 const NEW_SCENE_PROMPT = "With Scenie skill, create a scene with ...";
 
+const ROW = cn(
+  "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs/relaxed",
+  "text-foreground hover:bg-muted",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+);
+
+const CRUMB = cn(
+  "min-w-0 truncate rounded-sm text-muted-foreground hover:text-foreground",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+);
+
 async function fetchSceneList(): Promise<SceneListEntry[]> {
   const res = await fetch("/api/scenes", { cache: "no-store" });
   if (!res.ok) {
@@ -36,11 +48,103 @@ async function fetchSceneList(): Promise<SceneListEntry[]> {
   );
 }
 
-function SectionHeading({ id, children }: { id?: string; children: string }) {
+
+
+function childrenAt(entries: SceneListEntry[], cwd: string) {
+  const prefix = cwd ? `${cwd}/` : "";
+  const folders = new Map<string, number>();
+  const scenes: SceneListEntry[] = [];
+  for (const e of entries) {
+    if (cwd && !e.id.startsWith(prefix)) continue;
+    const rest = cwd ? e.id.slice(prefix.length) : e.id;
+    const slash = rest.indexOf("/");
+    if (slash === -1) {
+      if (rest) scenes.push(e);
+    } else {
+      const name = rest.slice(0, slash);
+      folders.set(name, (folders.get(name) ?? 0) + 1);
+    }
+  }
+  const folderRows = [...folders.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, count]) => ({ name, count }));
+  return { folderRows, scenes };
+}
+
+/** `rel` is the posix id or folder under scenes/ (empty = root). */
+export function PathCrumbs({
+  rel,
+  onGo,
+  id,
+}: {
+  rel: string;
+  onGo?: (next: string) => void;
+  id?: string;
+}) {
+  const parts = rel ? rel.split("/") : [];
+  const current = parts[parts.length - 1];
+  const parent = parts.slice(0, -1).join("/");
+  const parentName = parts.length >= 2 ? parts[parts.length - 2] : null;
+  const collapsed = parts.length >= 3;
+  const go = onGo && rel ? onGo : undefined;
   return (
-    <h2 id={id} className="m-0 px-2 text-xs font-normal text-muted-foreground">
-      {children}
-    </h2>
+    <nav
+      id={id}
+      aria-label="Scenes"
+      title={rel ? `scenes/${rel}` : "scenes"}
+      className="flex h-5 min-w-0 items-center gap-1 text-xs leading-none text-muted-foreground"
+    >
+      {go ? (
+        <button
+          type="button"
+          className={cn(CRUMB, "shrink-0 p-0 leading-none")}
+          onClick={() => go("")}
+        >
+          Scenes
+        </button>
+      ) : (
+        <span className="shrink-0 leading-none">Scenes</span>
+      )}
+      {rel ? (
+        <span className="shrink-0" aria-hidden>
+          /
+        </span>
+      ) : null}
+      {collapsed && (
+        <>
+          <span className="shrink-0" aria-hidden>
+            …
+          </span>
+          <span className="shrink-0" aria-hidden>
+            /
+          </span>
+        </>
+      )}
+      {parentName && (
+        <>
+          {go ? (
+            <button
+              type="button"
+              title={parent}
+              className={cn(CRUMB, "p-0 leading-none")}
+              onClick={() => go(parent)}
+            >
+              {parentName}
+            </button>
+          ) : (
+            <span className="min-w-0 truncate leading-none">{parentName}</span>
+          )}
+          <span className="shrink-0" aria-hidden>
+            /
+          </span>
+        </>
+      )}
+      {rel ? (
+        <span className="min-w-0 truncate leading-none text-foreground">
+          {current}
+        </span>
+      ) : null}
+    </nav>
   );
 }
 
@@ -98,6 +202,7 @@ function EmptyLibrary() {
 export function LibraryPanel({ onOpen }: { onOpen: (id: string) => void }) {
   const [entries, setEntries] = useState<SceneListEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cwd, setCwd] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -119,41 +224,66 @@ export function LibraryPanel({ onOpen }: { onOpen: (id: string) => void }) {
   }, []);
 
   const hasList = entries !== null && entries.length > 0;
+  const { folderRows, scenes } = hasList
+    ? childrenAt(entries, cwd)
+    : { folderRows: [], scenes: [] };
 
   let body: ReactNode;
   if (error) {
     body = (
       <p
-        className="sheet-selectable m-0 px-2 text-xs text-muted-foreground"
+        className="sheet-selectable m-0 text-xs text-muted-foreground"
         title={error}
       >
         {error}
       </p>
     );
   } else if (entries === null) {
-    body = <p className="m-0 px-2 text-xs text-muted-foreground">Loading…</p>;
+    body = <p className="m-0 text-xs text-muted-foreground">Loading…</p>;
   } else if (entries.length === 0) {
     body = <EmptyLibrary />;
   } else {
     body = (
       <ul className="m-0 flex list-none flex-col gap-px p-0">
-        {entries.map((entry) => {
+        {folderRows.map((folder) => {
+          const next = cwd ? `${cwd}/${folder.name}` : folder.name;
+          return (
+            <li key={`d:${next}`}>
+              <button
+                type="button"
+                title={next}
+                className={cn(ROW, "group")}
+                onClick={() => setCwd(next)}
+              >
+                <FolderIcon
+                  aria-hidden
+                  className="size-3 shrink-0 text-muted-foreground"
+                />
+                <span className="min-w-0 truncate">
+                  {folder.name}{" "}
+                  <span className="text-muted-foreground">({folder.count})</span>
+                </span>
+                <ChevronRightIcon
+                  aria-hidden
+                  className="ml-auto size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
+                />
+              </button>
+            </li>
+          );
+        })}
+        {scenes.map((entry) => {
           const label = entry.title?.trim() || entry.id;
           return (
             <li key={entry.id}>
               <button
                 type="button"
                 title={label}
-                className={cn(
-                  "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs/relaxed",
-                  "text-foreground hover:bg-muted",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                )}
+                className={ROW}
                 onClick={() => onOpen(entry.id)}
               >
-                <span
+                <FileIcon
                   aria-hidden
-                  className="size-1 shrink-0 rounded-full bg-muted-foreground/70"
+                  className="size-3 shrink-0 text-muted-foreground"
                 />
                 <span className="min-w-0 truncate">{label}</span>
               </button>
@@ -165,18 +295,16 @@ export function LibraryPanel({ onOpen }: { onOpen: (id: string) => void }) {
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <section
-        className="flex min-w-0 flex-col gap-1.5"
-        {...(hasList
-          ? { "aria-labelledby": "library-scenes-heading" }
-          : { "aria-label": "Library" })}
-      >
-        {hasList && (
-          <SectionHeading id="library-scenes-heading">Scenes</SectionHeading>
-        )}
-        {body}
-      </section>
-    </div>
+    <section
+      className="flex min-w-0 flex-col gap-1.5"
+      {...(hasList
+        ? { "aria-labelledby": "library-scenes-heading" }
+        : { "aria-label": "Library" })}
+    >
+      {hasList && (
+        <PathCrumbs rel={cwd} onGo={setCwd} id="library-scenes-heading" />
+      )}
+      {body}
+    </section>
   );
 }
