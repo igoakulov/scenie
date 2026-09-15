@@ -1,16 +1,10 @@
 {
   "title": "Example showcase: solar system",
   "description": "High-detail showcase of a compressed solar system: Sol, eight planets, Pluto, major moons, Saturn/Uranus rings, asteroid + Kuiper belts, a Halley-class comet, and a keyboard free-fly camera (WASD / QE / mouse). Distances and radii are artistic — not to scale — so you can read surfaces, atmospheres, and ring structure while flying. Playback drives orbital time; pause freezes the clock but not the craft.",
-  "tags": [
-    "example",
-    "showcase",
-    "solar-system",
-    "3d",
-    "astronomy"
-  ],
+  "tags": ["example", "showcase", "solar-system", "3d", "astronomy"],
   "attribution": {
     "author": "igoakulov",
-    "model": "grok-4.5-high",
+    "model": "grok-4.6-high",
     "prompt": "Make a flashy high-detail solar system where I can fly with keyboard. Go all out."
   }
 }
